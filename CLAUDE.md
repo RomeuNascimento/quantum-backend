@@ -36,11 +36,14 @@
 ## Variáveis de Ambiente (EasyPanel)
 
 ```
-DATABASE_URL=postgresql+psycopg2://postgres:SENHA@panel.quantumcalc.com.br:5433/quantum_prod
-JWT_SECRET=<gerar com: python -c "import secrets; print(secrets.token_hex(32))">
+DATABASE_URL=postgresql+psycopg2://postgres:<SENHA>@quantum_quantum-db:5432/quantum
+JWT_SECRET=<ver no EasyPanel — gerado com secrets.token_hex(32)>
 JWT_ALGORITHM=HS256
 JWT_EXPIRATION=30
 ALLOW_ORIGINS=https://quantumcalc.com.br
+
+# Banco externo (para rodar alembic do local):
+# postgresql://postgres:<SENHA>@72.61.132.202:5432/quantum
 ```
 
 ---
@@ -85,11 +88,15 @@ app/
 
 ## Deploy EasyPanel
 
-1. Criar novo serviço "App" apontando para o repo GitHub
-2. Configurar as variáveis de ambiente acima
-3. Build command: `pip install -r requirements.txt && alembic upgrade head`
-4. Start command: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
-5. Domínio: `api.quantumcalc.com.br`
+- **Build type:** nixpacks
+- **buildCommand:** `pip install -r requirements.txt`
+- **startCommand:** `uvicorn app.main:app --host 0.0.0.0 --port 8000`
+- **Domínio:** `api.quantumcalc.com.br` porta 8000, HTTPS true
+- **autoDeploy:** false (deploy manual via painel ou API)
+
+> **Migrations:** rodar manualmente do local com todas as env vars:
+> `DATABASE_URL=postgresql+psycopg2://...@72.61.132.202:5432/quantum JWT_SECRET=... alembic upgrade head`
+> O banco externo fica em `72.61.132.202:5432` (porta 5432 exposta no EasyPanel).
 
 ---
 
