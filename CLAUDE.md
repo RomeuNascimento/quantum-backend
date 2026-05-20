@@ -4,7 +4,7 @@
 
 **Criado em:** 2026-05-20
 **Última sessão:** 2026-05-20
-**Status:** Estrutura inicial criada, aguardando deploy no EasyPanel
+**Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
 
@@ -95,9 +95,19 @@ app/
 
 ## Próximos passos
 
-- [ ] Configurar variáveis de ambiente no EasyPanel
-- [ ] Testar conexão com banco `quantum_prod`
-- [ ] Executar `alembic upgrade head` para criar tabelas
-- [ ] Testar endpoints via Swagger em https://api.quantumcalc.com.br/docs
+- [x] Configurar variáveis de ambiente no EasyPanel
+- [x] Testar conexão com banco `quantum`
+- [x] Executar `alembic upgrade head` para criar tabelas (rodado localmente em 2026-05-20)
+- [x] Testar endpoints via Swagger em https://api.quantumcalc.com.br/docs
 - [ ] Implementar upload de nota fiscal para leitura via IA (futuro)
 - [ ] Implementar relatórios de margem e custos fixos (futuro)
+
+---
+
+## Notas de Deploy (2026-05-20)
+
+- Build: nixpacks (startCommand: `uvicorn app.main:app --host 0.0.0.0 --port 8000`)
+- Banco: `quantum_quantum-db:5432/quantum` (PostgreSQL interno no EasyPanel)
+- Migrations rodadas manualmente via psycopg2 do local contra `72.61.132.202:5432`
+- bcrypt fixado em 4.0.1 para compatibilidade com passlib 1.7.4
+- Para rodar migrations em um novo schema: `DATABASE_URL=... JWT_SECRET=... alembic upgrade head`
