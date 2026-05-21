@@ -26,10 +26,6 @@ class PeriodoEnum(str, enum.Enum):
     anual = "anual"
 
 
-class TipoReceitaEnum(str, enum.Enum):
-    massa = "massa"
-    recheio = "recheio"
-
 
 # ─── AUTH ────────────────────────────────────────────────────────────────────
 
@@ -148,7 +144,7 @@ class Receita(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     nome = Column(String(150), nullable=False)
-    tipo = Column(Enum(TipoReceitaEnum), nullable=False)
+    tipo = Column(String(100), nullable=True)
     rendimento_g = Column(Float, nullable=False)
     ativo = Column(Boolean, default=True)
     criado_em = Column(DateTime, default=datetime.utcnow)

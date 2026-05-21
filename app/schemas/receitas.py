@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List
-from app.models.models import TipoReceitaEnum
 
 
 class ReceitaIngredienteCreate(BaseModel):
@@ -41,7 +40,7 @@ class ReceitaMOEtapaOut(BaseModel):
 
 class ReceitaCreate(BaseModel):
     nome: str
-    tipo: TipoReceitaEnum
+    tipo: Optional[str] = None
     rendimento_g: float
     ingredientes: List[ReceitaIngredienteCreate] = []
     etapas_mo: List[ReceitaMOEtapaCreate] = []
@@ -49,7 +48,7 @@ class ReceitaCreate(BaseModel):
 
 class ReceitaUpdate(BaseModel):
     nome: Optional[str] = None
-    tipo: Optional[TipoReceitaEnum] = None
+    tipo: Optional[str] = None
     rendimento_g: Optional[float] = None
     ingredientes: Optional[List[ReceitaIngredienteCreate]] = None
     etapas_mo: Optional[List[ReceitaMOEtapaCreate]] = None
@@ -58,7 +57,7 @@ class ReceitaUpdate(BaseModel):
 class ReceitaOut(BaseModel):
     id: int
     nome: str
-    tipo: TipoReceitaEnum
+    tipo: Optional[str] = None
     rendimento_g: float
     ativo: bool
     criado_em: datetime
