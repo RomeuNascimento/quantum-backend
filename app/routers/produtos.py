@@ -9,7 +9,7 @@ from app.models.models import (
 )
 from app.schemas.produtos import (
     ProdutoCreate, ProdutoUpdate, ProdutoOut, ProdutoDetalhe,
-    ComponenteOut, ProdutoMOMontagemOut
+    ComponenteOut, ProdutoMOMontagemOut, ProdutoPreparacaoCreate
 )
 from app.routers.receitas import calcular_receita, get_valor_hora_padrao, custo_unitario_ingrediente
 
@@ -29,38 +29,21 @@ def calcular_produto(produto: Produto, valor_hora_padrao: float) -> dict:
     custo_mo = 0.0
     custo_emb = 0.0
 
-    massas_out = []
-    for pm in produto.massas:
+    preparacoes_out = []
+    for pm in list(produto.massas) + list(produto.recheios):
         receita = pm.receita
         if not receita:
             continue
         calc = calcular_receita(receita, valor_hora_padrao)
         fator = pm.quantidade_g / receita.rendimento_g if receita.rendimento_g > 0 else 0.0
-        custo_massa = (calc["custo_mp_total"] + calc["custo_mo_total"]) * fator
+        custo_prep = (calc["custo_mp_total"] + calc["custo_mo_total"]) * fator
         custo_mp += calc["custo_mp_total"] * fator
         custo_mo += calc["custo_mo_total"] * fator
-        massas_out.append(ComponenteOut(
+        preparacoes_out.append(ComponenteOut(
             id=pm.id,
             nome=receita.nome,
             quantidade=pm.quantidade_g,
-            custo=custo_massa,
-        ))
-
-    recheios_out = []
-    for pr in produto.recheios:
-        receita = pr.receita
-        if not receita:
-            continue
-        calc = calcular_receita(receita, valor_hora_padrao)
-        fator = pr.quantidade_g / receita.rendimento_g if receita.rendimento_g > 0 else 0.0
-        custo_recheio = (calc["custo_mp_total"] + calc["custo_mo_total"]) * fator
-        custo_mp += calc["custo_mp_total"] * fator
-        custo_mo += calc["custo_mo_total"] * fator
-        recheios_out.append(ComponenteOut(
-            id=pr.id,
-            nome=receita.nome,
-            quantidade=pr.quantidade_g,
-            custo=custo_recheio,
+            custo=custo_prep,
         ))
 
     ingredientes_out = []
@@ -108,8 +91,7 @@ def calcular_produto(produto: Produto, valor_hora_padrao: float) -> dict:
     custo_total = custo_mp + custo_mo + custo_emb
 
     return {
-        "massas": massas_out,
-        "recheios": recheios_out,
+        "preparacoes": preparacoes_out,
         "ingredientes_avulsos": ingredientes_out,
         "embalagens": embalagens_out,
         "mo_montagem": mo_out,
@@ -137,10 +119,8 @@ def criar(
     db.add(produto)
     db.flush()
 
-    for m in dados.massas:
-        db.add(ProdutoMassa(produto_id=produto.id, receita_id=m.receita_id, quantidade_g=m.quantidade_g))
-    for r in dados.recheios:
-        db.add(ProdutoRecheio(produto_id=produto.id, receita_id=r.receita_id, quantidade_g=r.quantidade_g))
+    for p in dados.preparacoes:
+        db.add(ProdutoMassa(produto_id=produto.id, receita_id=p.receita_id, quantidade_g=p.quantidade_g))
     for i in dados.ingredientes:
         db.add(ProdutoIngrediente(produto_id=produto.id, ingrediente_id=i.ingrediente_id, quantidade_g=i.quantidade_g))
     for e in dados.embalagens:
@@ -198,14 +178,11 @@ def atualizar(
             for item in items:
                 db.add(model_class(produto_id=produto.id, **build(item)))
 
-    if dados.massas is not None:
+    if dados.preparacoes is not None:
         for obj in produto.massas: db.delete(obj)
-        for m in dados.massas:
-            db.add(ProdutoMassa(produto_id=produto.id, receita_id=m.receita_id, quantidade_g=m.quantidade_g))
-    if dados.recheios is not None:
         for obj in produto.recheios: db.delete(obj)
-        for r in dados.recheios:
-            db.add(ProdutoRecheio(produto_id=produto.id, receita_id=r.receita_id, quantidade_g=r.quantidade_g))
+        for p in dados.preparacoes:
+            db.add(ProdutoMassa(produto_id=produto.id, receita_id=p.receita_id, quantidade_g=p.quantidade_g))
     if dados.ingredientes is not None:
         for obj in produto.ingredientes: db.delete(obj)
         for i in dados.ingredientes:

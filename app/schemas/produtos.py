@@ -3,12 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 
 
-class ProdutoMassaCreate(BaseModel):
-    receita_id: int
-    quantidade_g: float
-
-
-class ProdutoRecheioCreate(BaseModel):
+class ProdutoPreparacaoCreate(BaseModel):
     receita_id: int
     quantidade_g: float
 
@@ -49,8 +44,7 @@ class ProdutoMOMontagemOut(BaseModel):
 
 class ProdutoCreate(BaseModel):
     nome: str
-    massas: List[ProdutoMassaCreate] = []
-    recheios: List[ProdutoRecheioCreate] = []
+    preparacoes: List[ProdutoPreparacaoCreate] = []
     ingredientes: List[ProdutoIngredienteCreate] = []
     embalagens: List[ProdutoEmbalagemCreate] = []
     mo_montagem: List[ProdutoMOMontagemCreate] = []
@@ -58,8 +52,7 @@ class ProdutoCreate(BaseModel):
 
 class ProdutoUpdate(BaseModel):
     nome: Optional[str] = None
-    massas: Optional[List[ProdutoMassaCreate]] = None
-    recheios: Optional[List[ProdutoRecheioCreate]] = None
+    preparacoes: Optional[List[ProdutoPreparacaoCreate]] = None
     ingredientes: Optional[List[ProdutoIngredienteCreate]] = None
     embalagens: Optional[List[ProdutoEmbalagemCreate]] = None
     mo_montagem: Optional[List[ProdutoMOMontagemCreate]] = None
@@ -76,8 +69,7 @@ class ProdutoOut(BaseModel):
 
 
 class ProdutoDetalhe(ProdutoOut):
-    massas: List[ComponenteOut] = []
-    recheios: List[ComponenteOut] = []
+    preparacoes: List[ComponenteOut] = []
     ingredientes_avulsos: List[ComponenteOut] = []
     embalagens: List[ComponenteOut] = []
     mo_montagem: List[ProdutoMOMontagemOut] = []
