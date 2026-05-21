@@ -87,7 +87,8 @@ class Ingrediente(Base):
 
     user = relationship("User", back_populates="ingredientes")
     precos = relationship("IngredientePreco", back_populates="ingrediente",
-                          order_by="desc(IngredientePreco.data_compra)")
+                          order_by="desc(IngredientePreco.data_compra)",
+                          cascade="all, delete-orphan")
 
 
 class IngredientePreco(Base):
@@ -119,7 +120,8 @@ class Embalagem(Base):
 
     user = relationship("User", back_populates="embalagens")
     precos = relationship("EmbalagemPreco", back_populates="embalagem",
-                          order_by="desc(EmbalagemPreco.data_compra)")
+                          order_by="desc(EmbalagemPreco.data_compra)",
+                          cascade="all, delete-orphan")
 
 
 class EmbalagemPreco(Base):
@@ -151,8 +153,10 @@ class Receita(Base):
     criado_em = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="receitas")
-    ingredientes = relationship("ReceitaIngrediente", back_populates="receita")
-    etapas_mo = relationship("ReceitaMOEtapa", back_populates="receita")
+    ingredientes = relationship("ReceitaIngrediente", back_populates="receita",
+                               cascade="all, delete-orphan")
+    etapas_mo = relationship("ReceitaMOEtapa", back_populates="receita",
+                             cascade="all, delete-orphan")
 
 
 class ReceitaIngrediente(Base):
