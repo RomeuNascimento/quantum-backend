@@ -79,6 +79,7 @@ class Ingrediente(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     nome = Column(String(150), nullable=False)
+    marca = Column(String(100), nullable=True)
     unidade = Column(Enum(UnidadeEnum), nullable=False)
     fator_correcao = Column(Float, default=1.0)
     ativo = Column(Boolean, default=True)

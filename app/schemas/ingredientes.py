@@ -28,6 +28,7 @@ class IngredientePrecoOut(BaseModel):
 
 class IngredienteCreate(BaseModel):
     nome: str
+    marca: Optional[str] = None
     unidade: UnidadeEnum
     fator_correcao: float = 1.0
     preco_inicial: Optional[IngredientePrecoCreate] = None
@@ -35,6 +36,7 @@ class IngredienteCreate(BaseModel):
 
 class IngredienteUpdate(BaseModel):
     nome: Optional[str] = None
+    marca: Optional[str] = None
     unidade: Optional[UnidadeEnum] = None
     fator_correcao: Optional[float] = None
 
@@ -42,6 +44,7 @@ class IngredienteUpdate(BaseModel):
 class IngredienteOut(BaseModel):
     id: int
     nome: str
+    marca: Optional[str] = None
     unidade: UnidadeEnum
     fator_correcao: float
     ativo: bool

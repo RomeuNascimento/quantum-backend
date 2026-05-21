@@ -54,6 +54,7 @@ def criar(
     ing = Ingrediente(
         user_id=user.id,
         nome=dados.nome,
+        marca=dados.marca,
         unidade=dados.unidade,
         fator_correcao=dados.fator_correcao,
     )

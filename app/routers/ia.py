@@ -15,7 +15,8 @@ UNIDADES_VALIDAS = {"g", "kg", "ml", "L", "unid"}
 PROMPT_NOTA = """Analise esta nota fiscal ou cupom e extraia todos os itens listados.
 
 Para cada item retorne:
-- nome: nome do produto como aparece na nota
+- nome: nome genérico/comum do produto em português (ex: "Farinha de trigo", "Achocolatado", "Manteiga") — NÃO o código fiscal abreviado
+- marca: marca comercial do produto (ex: "Nestlé", "Fleischmann", "Quaker") ou null se não identificada
 - quantidade: quantidade numérica comprada (só o número)
 - unidade: "g", "kg", "ml", "L" ou "unid"
 - preco_total: valor total pago pelo item (só o número, sem R$)
@@ -24,7 +25,7 @@ Inclua TODOS os itens, inclusive não-alimentos.
 Tente identificar a data da compra.
 
 Retorne SOMENTE JSON válido, sem markdown, neste formato:
-{"data_compra": "YYYY-MM-DD", "itens": [{"nome": "...", "quantidade": 1.0, "unidade": "unid", "preco_total": 0.0}]}
+{"data_compra": "YYYY-MM-DD", "itens": [{"nome": "...", "marca": null, "quantidade": 1.0, "unidade": "unid", "preco_total": 0.0}]}
 
 Se a data não estiver visível use null."""
 
