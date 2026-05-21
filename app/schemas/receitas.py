@@ -12,6 +12,7 @@ class ReceitaIngredienteOut(BaseModel):
     id: int
     ingrediente_id: int
     ingrediente_nome: str
+    unidade: str
     quantidade_g: float
     custo: float  # calculado
 

@@ -36,6 +36,7 @@ def calcular_receita(receita: Receita, valor_hora_padrao: float) -> dict:
             id=ri.id,
             ingrediente_id=ri.ingrediente_id,
             ingrediente_nome=ri.ingrediente.nome,
+            unidade=ri.ingrediente.unidade,
             quantidade_g=ri.quantidade_g,
             custo=custo,
         ))
