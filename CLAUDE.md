@@ -3,7 +3,7 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-05-21
+**Última sessão:** 2026-05-29
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -184,6 +184,10 @@ curl -X POST https://panel.quantumcalc.com.br/api/trpc/services.app.deployServic
 - [x] Importação via IA (routers/ia.py + anthropic no requirements)
 - [x] ANTHROPIC_API_KEY configurada no EasyPanel (IA ativa)
 - [x] Campo `marca` em ingredientes + migration 003 + prompt IA normalizado
-- [ ] Auditar bugs do fluxo completo (receita → produto → precificação)
+- [x] **Auditoria e correção de bugs do fluxo completo** (2026-05-29)
+  - `schemas/produtos.py`: `ComponenteOut` dividido em `PrepOut` (+ `receita_id`), `IngAvulsoOut` (+ `ingrediente_id`), `EmbOut` (+ `embalagem_id`) — fix crítico de edição de produto
+  - `routers/produtos.py`: `calcular_produto` atualizado para popular `receita_id`, `ingrediente_id`, `embalagem_id` nos novos schemas
+  - `routers/precificacao.py`: IDOR corrigido em `deletar_preco_produto` — agora valida `Produto.user_id == user.id`
+  - `routers/precificacao.py`: `listar_precos_produto` filtra canais inativos (`if not pp.canal.ativo: continue`)
 - [ ] Implementar relatórios de margem e custos fixos
 - [ ] Habilitar autoDeploy no EasyPanel

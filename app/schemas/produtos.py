@@ -24,6 +24,31 @@ class ProdutoMOMontagemCreate(BaseModel):
     colaborador_id: Optional[int] = None
 
 
+class PrepOut(BaseModel):
+    id: int
+    receita_id: int
+    nome: str
+    quantidade: float
+    custo: float
+
+
+class IngAvulsoOut(BaseModel):
+    id: int
+    ingrediente_id: int
+    nome: str
+    quantidade: float
+    custo: float
+
+
+class EmbOut(BaseModel):
+    id: int
+    embalagem_id: int
+    nome: str
+    quantidade: float
+    custo: float
+
+
+# mantido para compatibilidade interna
 class ComponenteOut(BaseModel):
     id: int
     nome: str
@@ -69,9 +94,9 @@ class ProdutoOut(BaseModel):
 
 
 class ProdutoDetalhe(ProdutoOut):
-    preparacoes: List[ComponenteOut] = []
-    ingredientes_avulsos: List[ComponenteOut] = []
-    embalagens: List[ComponenteOut] = []
+    preparacoes: List[PrepOut] = []
+    ingredientes_avulsos: List[IngAvulsoOut] = []
+    embalagens: List[EmbOut] = []
     mo_montagem: List[ProdutoMOMontagemOut] = []
     custo_mp_total: float = 0.0
     custo_mo_total: float = 0.0

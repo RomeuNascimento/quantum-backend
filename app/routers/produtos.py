@@ -9,7 +9,7 @@ from app.models.models import (
 )
 from app.schemas.produtos import (
     ProdutoCreate, ProdutoUpdate, ProdutoOut, ProdutoDetalhe,
-    ComponenteOut, ProdutoMOMontagemOut, ProdutoPreparacaoCreate
+    PrepOut, IngAvulsoOut, EmbOut, ProdutoMOMontagemOut, ProdutoPreparacaoCreate
 )
 from app.routers.receitas import calcular_receita, get_valor_hora_padrao, custo_unitario_ingrediente
 
@@ -39,8 +39,9 @@ def calcular_produto(produto: Produto, valor_hora_padrao: float) -> dict:
         custo_prep = (calc["custo_mp_total"] + calc["custo_mo_total"]) * fator
         custo_mp += calc["custo_mp_total"] * fator
         custo_mo += calc["custo_mo_total"] * fator
-        preparacoes_out.append(ComponenteOut(
+        preparacoes_out.append(PrepOut(
             id=pm.id,
+            receita_id=pm.receita_id,
             nome=receita.nome,
             quantidade=pm.quantidade_g,
             custo=custo_prep,
@@ -51,8 +52,9 @@ def calcular_produto(produto: Produto, valor_hora_padrao: float) -> dict:
         cu = custo_unitario_ingrediente(pi.ingrediente)
         custo = cu * pi.quantidade_g
         custo_mp += custo
-        ingredientes_out.append(ComponenteOut(
+        ingredientes_out.append(IngAvulsoOut(
             id=pi.id,
+            ingrediente_id=pi.ingrediente_id,
             nome=pi.ingrediente.nome,
             quantidade=pi.quantidade_g,
             custo=custo,
@@ -63,8 +65,9 @@ def calcular_produto(produto: Produto, valor_hora_padrao: float) -> dict:
         cu = custo_unitario_embalagem(pe.embalagem)
         custo = cu * pe.quantidade
         custo_emb += custo
-        embalagens_out.append(ComponenteOut(
+        embalagens_out.append(EmbOut(
             id=pe.id,
+            embalagem_id=pe.embalagem_id,
             nome=pe.embalagem.nome,
             quantidade=pe.quantidade,
             custo=custo,

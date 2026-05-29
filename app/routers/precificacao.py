@@ -93,6 +93,8 @@ def listar_precos_produto(
     precos = db.query(ProdutoPreco).filter(ProdutoPreco.produto_id == produto_id).all()
     result = []
     for pp in precos:
+        if not pp.canal.ativo:
+            continue
         sugerido = calcular_preco_sugerido(custo_total, pp.margem_pct, pp.canal)
         result.append(ProdutoPrecoOut(
             id=pp.id,
@@ -202,6 +204,12 @@ def deletar_preco_produto(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
+    produto = db.query(Produto).filter(
+        Produto.id == produto_id, Produto.user_id == user.id
+    ).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+
     pp = db.query(ProdutoPreco).filter(
         ProdutoPreco.id == preco_id, ProdutoPreco.produto_id == produto_id
     ).first()
