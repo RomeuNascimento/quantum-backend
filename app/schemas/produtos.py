@@ -102,3 +102,12 @@ class ProdutoDetalhe(ProdutoOut):
     custo_mo_total: float = 0.0
     custo_embalagens_total: float = 0.0
     custo_total: float = 0.0
+
+
+class HistoricoPonto(BaseModel):
+    data: str
+    custo: float
+
+
+class HistoricoOut(BaseModel):
+    pontos: List[HistoricoPonto]

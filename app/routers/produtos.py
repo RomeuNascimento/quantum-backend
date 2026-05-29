@@ -1,15 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+from collections import defaultdict
+from datetime import date as date_type
 from app.database import get_db
 from app.auth.utils import get_usuario_atual
 from app.models.models import (
     User, Produto, ProdutoMassa, ProdutoRecheio, ProdutoIngrediente,
-    ProdutoEmbalagem, ProdutoMOMontagem, Receita, Ingrediente, Embalagem, Colaborador
+    ProdutoEmbalagem, ProdutoMOMontagem, Receita, Ingrediente, Embalagem,
+    Colaborador, IngredientePreco, EmbalagemPreco
 )
 from app.schemas.produtos import (
     ProdutoCreate, ProdutoUpdate, ProdutoOut, ProdutoDetalhe,
-    PrepOut, IngAvulsoOut, EmbOut, ProdutoMOMontagemOut, ProdutoPreparacaoCreate
+    PrepOut, IngAvulsoOut, EmbOut, ProdutoMOMontagemOut, ProdutoPreparacaoCreate,
+    HistoricoOut, HistoricoPonto
 )
 from app.routers.receitas import calcular_receita, get_valor_hora_padrao, custo_unitario_ingrediente
 
@@ -221,3 +225,114 @@ def deletar(
         raise HTTPException(status_code=404, detail="Produto não encontrado")
     produto.ativo = False
     db.commit()
+
+
+@router.get("/{id}/historico-custo", response_model=HistoricoOut)
+def historico_custo(
+    id: int,
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
+    produto = db.query(Produto).filter(
+        Produto.id == id, Produto.user_id == user.id
+    ).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+    vh = get_valor_hora_padrao(user, db)
+
+    # Prepara estrutura: preparações e ingredientes avulsos e embalagens
+    prep_entries = [(pm.receita, pm.quantidade_g) for pm in list(produto.massas) + list(produto.recheios) if pm.receita]
+    ing_avulso_entries = [(pi.ingrediente, pi.quantidade_g) for pi in produto.ingredientes]
+    emb_entries = [(pe.embalagem, pe.quantidade) for pe in produto.embalagens]
+
+    # IDs de ingredientes e embalagens necessários
+    all_ing_ids = set()
+    for receita, _ in prep_entries:
+        for ri in receita.ingredientes:
+            all_ing_ids.add(ri.ingrediente_id)
+    for ing, _ in ing_avulso_entries:
+        all_ing_ids.add(ing.id)
+
+    all_emb_ids = {emb.id for emb, _ in emb_entries}
+
+    # Histórico de preços
+    ing_prices: dict = defaultdict(list)
+    if all_ing_ids:
+        for p in db.query(IngredientePreco).filter(IngredientePreco.ingrediente_id.in_(all_ing_ids)).all():
+            ing_prices[p.ingrediente_id].append(p)
+
+    emb_prices: dict = defaultdict(list)
+    if all_emb_ids:
+        for p in db.query(EmbalagemPreco).filter(EmbalagemPreco.embalagem_id.in_(all_emb_ids)).all():
+            emb_prices[p.embalagem_id].append(p)
+
+    if not ing_prices and not emb_prices:
+        return HistoricoOut(pontos=[])
+
+    # Datas de mudança: toda nova entrada de preço cria um ponto
+    all_dates = set()
+    for prices in ing_prices.values():
+        for p in prices:
+            all_dates.add(p.data_compra.date())
+    for prices in emb_prices.values():
+        for p in prices:
+            all_dates.add(p.data_compra.date())
+    all_dates.add(date_type.today())
+    dates = sorted(all_dates)
+
+    def price_at(price_list, d):
+        valid = [p for p in price_list if p.data_compra.date() <= d]
+        return max(valid, key=lambda p: p.data_compra) if valid else None
+
+    # MO de montagem não muda no tempo
+    mo_montagem_custo = sum(
+        ((mo.colaborador.valor_hora if mo.colaborador_id and mo.colaborador else vh) / 60) * mo.tempo_min
+        for mo in produto.mo_montagem
+    )
+
+    pontos_raw = []
+    for d in dates:
+        custo = 0.0
+
+        # Preparações (receitas vinculadas ao produto)
+        for receita, qtd_usada in prep_entries:
+            if receita.rendimento_g <= 0:
+                continue
+            fator = qtd_usada / receita.rendimento_g
+            custo_mp_rec = 0.0
+            for ri in receita.ingredientes:
+                ing = ri.ingrediente
+                p = price_at(ing_prices.get(ri.ingrediente_id, []), d)
+                if p and p.quantidade_embalagem > 0 and ing.fator_correcao > 0:
+                    custo_mp_rec += (p.preco / p.quantidade_embalagem / ing.fator_correcao) * ri.quantidade_g
+            custo_mo_rec = sum(
+                ((et.colaborador.valor_hora if et.colaborador_id and et.colaborador else vh) / 60) * et.tempo_min
+                for et in receita.etapas_mo
+            )
+            custo += (custo_mp_rec + custo_mo_rec) * fator
+
+        # Ingredientes avulsos
+        for ing, qtd in ing_avulso_entries:
+            p = price_at(ing_prices.get(ing.id, []), d)
+            if p and p.quantidade_embalagem > 0 and ing.fator_correcao > 0:
+                custo += (p.preco / p.quantidade_embalagem / ing.fator_correcao) * qtd
+
+        # Embalagens
+        for emb, qtd in emb_entries:
+            p = price_at(emb_prices.get(emb.id, []), d)
+            if p and p.quantidade_embalagem > 0:
+                custo += (p.preco / p.quantidade_embalagem) * qtd
+
+        custo += mo_montagem_custo
+        pontos_raw.append(HistoricoPonto(data=d.isoformat(), custo=round(custo, 4)))
+
+    # Mantém apenas pontos onde o custo mudou (+ sempre o primeiro e o último)
+    result = [pontos_raw[0]]
+    for pt in pontos_raw[1:]:
+        if abs(pt.custo - result[-1].custo) > 0.001:
+            result.append(pt)
+    if result[-1].data != pontos_raw[-1].data:
+        result.append(pontos_raw[-1])
+
+    return HistoricoOut(pontos=result)
