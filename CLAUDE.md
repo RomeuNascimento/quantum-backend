@@ -178,14 +178,14 @@ curl -X POST https://panel.quantumcalc.com.br/api/trpc/services.app.deployServic
 > Revisão de código completa feita em 2026-06-11. Itens abaixo ordenados por prioridade.
 > Roadmap de funcionalidades novas: ver seção "Roadmap de funcionalidades" no CLAUDE.md do **frontend**.
 
-### 🔴 Críticos (Fase 0 — corrigir antes de features novas)
+### 🔴 Críticos (Fase 0) — ✅ TODOS CORRIGIDOS em 2026-06-11 (commit na branch claude/sharp-noether-6ml8uh)
 
-- [ ] **C1. IDOR em Produtos (criar/atualizar)** — `routers/produtos.py:129-136` e `:188-204`: IDs aninhados (`receita_id`, `ingrediente_id`, `embalagem_id`) NÃO são validados contra `user_id`. Usuário autenticado vincula entidades de outro tenant e o GET seguinte vaza nome/quantidades/custos. Fix: validar todo ID aninhado com filtro `user_id == user.id` (helper `get_owned_or_404`).
-- [ ] **C2. IDOR em Receitas (atualizar)** — `routers/receitas.py:174-193`: `PUT /receitas/{id}` recria `ReceitaIngrediente` sem validar ownership do `ingrediente_id` (o POST valida, o PUT não). Idem `colaborador_id` nas `etapas_mo` (create E update).
-- [ ] **C3. IA bloqueante** — `routers/ia.py:110-114, 144`: cliente `anthropic.Anthropic` SÍNCRONO dentro de `async def` → trava o event loop inteiro por 30–90s durante processamento (login e tudo mais param). Fix: `AsyncAnthropic` + `await`, ou trocar endpoint para `def` síncrono (threadpool).
-- [ ] **C4. Upload sem limite + sem rate limiting em /ia/** — `ia.py:107, 132`: `await file.read()` sem limite de tamanho (OOM/DoS) e sem rate limiting — registro de conta é aberto, qualquer um pode queimar créditos Anthropic em loop. Fix: limite ~15MB + rate limit por usuário.
-- [ ] **C5. Exception handler global sem log** — `main.py:32-37`: 500 mudo, sem `logger.exception`. Cegueira operacional total em produção.
-- [ ] **C6. Zero validação numérica nos schemas** — todos os `app/schemas/*.py`: aceita `preco: -10`, `rendimento_g: 0/-500`, `fator_correcao: -1`, margem negativa, etc. Fix: `Field(gt=0)`/`ge=0` em todos os campos numéricos + `senha` com `min_length=8`.
+- [x] **C1. IDOR em Produtos (criar/atualizar)** — `routers/produtos.py:129-136` e `:188-204`: IDs aninhados (`receita_id`, `ingrediente_id`, `embalagem_id`) NÃO são validados contra `user_id`. Usuário autenticado vincula entidades de outro tenant e o GET seguinte vaza nome/quantidades/custos. Fix: validar todo ID aninhado com filtro `user_id == user.id` (helper `get_owned_or_404`).
+- [x] **C2. IDOR em Receitas (atualizar)** — `routers/receitas.py:174-193`: `PUT /receitas/{id}` recria `ReceitaIngrediente` sem validar ownership do `ingrediente_id` (o POST valida, o PUT não). Idem `colaborador_id` nas `etapas_mo` (create E update).
+- [x] **C3. IA bloqueante** — `routers/ia.py:110-114, 144`: cliente `anthropic.Anthropic` SÍNCRONO dentro de `async def` → trava o event loop inteiro por 30–90s durante processamento (login e tudo mais param). Fix: `AsyncAnthropic` + `await`, ou trocar endpoint para `def` síncrono (threadpool).
+- [x] **C4. Upload sem limite + sem rate limiting em /ia/** — `ia.py:107, 132`: `await file.read()` sem limite de tamanho (OOM/DoS) e sem rate limiting — registro de conta é aberto, qualquer um pode queimar créditos Anthropic em loop. Fix: limite ~15MB + rate limit por usuário.
+- [x] **C5. Exception handler global sem log** — `main.py:32-37`: 500 mudo, sem `logger.exception`. Cegueira operacional total em produção.
+- [x] **C6. Zero validação numérica nos schemas** — todos os `app/schemas/*.py`: aceita `preco: -10`, `rendimento_g: 0/-500`, `fator_correcao: -1`, margem negativa, etc. Fix: `Field(gt=0)`/`ge=0` em todos os campos numéricos + `senha` com `min_length=8`.
 
 ### 🟡 Médios (Fase 1 — fundação para relatórios)
 
