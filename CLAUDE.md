@@ -4,6 +4,7 @@
 
 **Criado em:** 2026-05-20
 **Última sessão:** 2026-06-11
+**Próxima sessão:** continuar a partir da Fase 2 (relatórios de margem)
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -234,3 +235,49 @@ Multi-tenancy disciplinado nas leituras (todos os SELECTs raiz filtram `user_id`
   - `routers/precificacao.py`: `listar_precos_produto` filtra canais inativos (`if not pp.canal.ativo: continue`)
 - [ ] Implementar relatórios de margem e custos fixos
 - [ ] Habilitar autoDeploy no EasyPanel
+
+---
+
+## Continuação — Fase 2 (próxima sessão)
+
+> Branch de trabalho: `claude/sharp-noether-6ml8uh` (mesma dos dois repos)
+
+### O que foi entregue na sessão de 2026-06-11 (Fase 0 + parte da Fase 1)
+
+**Backend (6 commits, branch pushed):**
+- `app/routers/ownership.py` — helper `validar_ids_do_usuario` (IDOR fix C1/C2)
+- `app/routers/unidades.py` — `fator_unidade()` para conversão kg/L → g/ml no cálculo
+- `app/routers/ia.py` — endpoints `def` (threadpool, não-bloqueante), rate limit 10/10min, limite 15MB, max_tokens 4096
+- `app/routers/receitas.py` — ownership no PUT, selectinload no detalhar, fator_unidade no custo unitário
+- `app/routers/produtos.py` — `_validar_componentes`, `query_produto_completo` (N+1 fix), fator_unidade no histórico
+- `app/routers/ingredientes.py` — fator_unidade em `calcular_custo_unitario`
+- `app/main.py` — logger no exception handler global
+- `app/schemas/*.py` — validação numérica `Field(gt=0/ge=0)`, senha `min_length=8`
+- `app/models/models.py` — `UniqueConstraint` em `produto_precos`
+- `migrations/versions/004_indices_e_unique_precos.py` — dedupe + UNIQUE + 17 índices em FK
+
+**⚠️ Ações pendentes antes do próximo deploy (responsabilidade do usuário):**
+1. `alembic upgrade head` em produção (migration 004 ainda não aplicada)
+2. Auditar ingredientes com unidade `kg` ou `L` em produção — o novo `fator_unidade()` pode mudar o custo deles se `quantidade_embalagem` já estava em gramas como workaround
+3. Testar fluxo de importação de nota fiscal — a validação numérica nova (gt=0) rejeita itens com quantidade 0 que a IA ocasionalmente retorna
+
+### Onde continuar
+
+**Fase 2 — Features de relatório (prioridade):**
+1. Endpoint `GET /produtos/relatorio-margem` — agrega por produto todos os canais com `preco_final`, `custo_total`, `margem_real`; dados já prontos em `listarPrecosProduto`
+2. Extrair lógica de cálculo de custo como função reutilizável (hoje duplicada entre `calcular_produto` e `historico_custo`)
+3. Endpoint de snapshot de custo por produto para série temporal (base para gráficos de evolução)
+
+**Fase 1 restante (antes de Fase 2):**
+- M1: Migrar colunas monetárias de `Float` → `Numeric(12,4)` (pré-requisito para relatórios precisos)
+- M5: Rate limiting em login/register (brute force)
+- M6: `PUT` com `exclude_unset=True` em vez de `exclude_none=True` (permite limpar campos opcionais)
+- M7: Importação Excel — usar `openpyxl` para `.xlsx` (hoje envia lixo binário ao Claude)
+- M8: Parsing IA robusto — validar JSON antes de repassar ao frontend, tratar IndexError em `resp.content[0]`
+
+**Fase 3 (depois):**
+- Alerta de margem corroída no Dashboard
+- Rateio de custos fixos por produto
+- Simulador "e se" com sliders de margem
+- Ficha técnica exportável (PDF)
+- Modo offline com fila de escrita (pós-TanStack Query)
