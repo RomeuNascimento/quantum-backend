@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List
 from app.database import get_db
 from app.auth.utils import get_usuario_atual
 from app.models.models import User, Canal, ProdutoPreco, Produto
 from app.schemas.precificacao import (
     CanalCreate, CanalUpdate, CanalOut,
-    ProdutoPrecoCreate, ProdutoPrecoUpdate, ProdutoPrecoOut
+    ProdutoPrecoCreate, ProdutoPrecoUpdate, ProdutoPrecoOut,
+    RelatorioMargemCanal, RelatorioMargemProduto, RelatorioMargemOut
 )
 from app.routers.produtos import calcular_produto, query_produto_completo
 from app.routers.receitas import get_valor_hora_padrao
@@ -20,6 +21,61 @@ def calcular_preco_sugerido(custo_total: float, margem_pct: float, canal: Canal)
     if divisor <= 0:
         return 0.0
     return custo_total / divisor
+
+
+# ─── RELATÓRIO DE MARGEM ─────────────────────────────────────────────────────
+
+@router.get("/relatorio-margem", response_model=RelatorioMargemOut)
+def relatorio_margem(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db)):
+    """Agrega, por produto ativo, a margem real em cada canal precificado.
+
+    Margem real é derivada da fórmula de preço sugerido:
+    preco = custo / (1 − margem − taxas)  →  margem = 1 − taxas − custo/preco
+    """
+    produtos = query_produto_completo(db).options(
+        selectinload(Produto.precos).selectinload(ProdutoPreco.canal)
+    ).filter(Produto.user_id == user.id, Produto.ativo == True).all()
+
+    vh = get_valor_hora_padrao(user, db)
+
+    itens = []
+    for produto in produtos:
+        calc = calcular_produto(produto, vh)
+        custo_total = calc["custo_total"]
+
+        canais = []
+        for pp in produto.precos:
+            if not pp.canal.ativo:
+                continue
+            canal = pp.canal
+            sugerido = calcular_preco_sugerido(custo_total, pp.margem_pct, canal)
+            praticado = pp.preco_final if pp.preco_final else sugerido
+            taxas_frac = (canal.taxa_plataforma_pct + canal.taxa_cartao_pct + canal.imposto_pct) / 100
+            if praticado > 0:
+                margem_real = (1 - taxas_frac - custo_total / praticado) * 100
+                lucro = praticado - custo_total - praticado * taxas_frac
+            else:
+                margem_real = 0.0
+                lucro = 0.0
+            canais.append(RelatorioMargemCanal(
+                canal_id=canal.id,
+                canal_nome=canal.nome,
+                margem_alvo_pct=pp.margem_pct,
+                preco_final=pp.preco_final,
+                preco_sugerido=round(sugerido, 4),
+                preco_praticado=round(praticado, 4),
+                margem_real_pct=round(margem_real, 2),
+                lucro_unitario=round(lucro, 4),
+            ))
+
+        itens.append(RelatorioMargemProduto(
+            produto_id=produto.id,
+            produto_nome=produto.nome,
+            custo_total=round(custo_total, 4),
+            canais=canais,
+        ))
+
+    return RelatorioMargemOut(produtos=itens)
 
 
 # ─── CANAIS ──────────────────────────────────────────────────────────────────

@@ -11,10 +11,10 @@ class ReceitaIngredienteCreate(BaseModel):
 class ReceitaIngredienteOut(BaseModel):
     id: int
     ingrediente_id: int
-    ingrediente_nome: str
-    unidade: str
+    ingrediente_nome: str = ""  # calculado
+    unidade: str = ""  # calculado
     quantidade_g: float
-    custo: float  # calculado
+    custo: float = 0.0  # calculado
 
     class Config:
         from_attributes = True
@@ -31,9 +31,9 @@ class ReceitaMOEtapaOut(BaseModel):
     descricao: str
     tempo_min: float
     colaborador_id: Optional[int]
-    colaborador_nome: Optional[str]
-    valor_hora: float  # calculado: do colaborador ou valor_hora_padrao
-    custo: float  # calculado
+    colaborador_nome: Optional[str] = None  # calculado
+    valor_hora: float = 0.0  # calculado: do colaborador ou valor_hora_padrao
+    custo: float = 0.0  # calculado
 
     class Config:
         from_attributes = True

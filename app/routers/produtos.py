@@ -173,9 +173,7 @@ def criar(
     db.refresh(produto)
     vh = get_valor_hora_padrao(user, db)
     calc = calcular_produto(produto, vh)
-    out = ProdutoDetalhe.model_validate(produto)
-    out.__dict__.update(calc)
-    return out
+    return ProdutoDetalhe(**ProdutoOut.model_validate(produto).model_dump(), **calc)
 
 
 @router.get("/{id}", response_model=ProdutoDetalhe)
@@ -191,9 +189,7 @@ def detalhar(
         raise HTTPException(status_code=404, detail="Produto não encontrado")
     vh = get_valor_hora_padrao(user, db)
     calc = calcular_produto(produto, vh)
-    out = ProdutoDetalhe.model_validate(produto)
-    out.__dict__.update(calc)
-    return out
+    return ProdutoDetalhe(**ProdutoOut.model_validate(produto).model_dump(), **calc)
 
 
 @router.put("/{id}", response_model=ProdutoDetalhe)
@@ -243,9 +239,7 @@ def atualizar(
     db.refresh(produto)
     vh = get_valor_hora_padrao(user, db)
     calc = calcular_produto(produto, vh)
-    out = ProdutoDetalhe.model_validate(produto)
-    out.__dict__.update(calc)
-    return out
+    return ProdutoDetalhe(**ProdutoOut.model_validate(produto).model_dump(), **calc)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)

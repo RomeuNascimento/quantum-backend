@@ -52,3 +52,25 @@ class ProdutoPrecoOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RelatorioMargemCanal(BaseModel):
+    canal_id: int
+    canal_nome: str
+    margem_alvo_pct: float
+    preco_final: Optional[float]
+    preco_sugerido: float
+    preco_praticado: float       # preco_final se definido, senão preco_sugerido
+    margem_real_pct: float       # margem efetiva sobre o preço praticado, líquida de taxas
+    lucro_unitario: float        # preço praticado − custo − taxas
+
+
+class RelatorioMargemProduto(BaseModel):
+    produto_id: int
+    produto_nome: str
+    custo_total: float
+    canais: list[RelatorioMargemCanal]
+
+
+class RelatorioMargemOut(BaseModel):
+    produtos: list[RelatorioMargemProduto]

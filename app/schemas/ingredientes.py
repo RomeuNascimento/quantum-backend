@@ -20,7 +20,7 @@ class IngredientePrecoOut(BaseModel):
     origem: OrigemEnum
     observacao: Optional[str]
     criado_em: datetime
-    custo_unitario: float  # calculado
+    custo_unitario: float = 0.0  # calculado
 
     class Config:
         from_attributes = True

@@ -129,9 +129,7 @@ def criar(
     db.refresh(receita)
     vh = get_valor_hora_padrao(user, db)
     calc = calcular_receita(receita, vh)
-    out = ReceitaDetalhe.model_validate(receita)
-    out.__dict__.update(calc)
-    return out
+    return ReceitaDetalhe(**ReceitaOut.model_validate(receita).model_dump(), **calc)
 
 
 @router.get("/{id}", response_model=ReceitaDetalhe)
@@ -152,9 +150,7 @@ def detalhar(
         raise HTTPException(status_code=404, detail="Receita não encontrada")
     vh = get_valor_hora_padrao(user, db)
     calc = calcular_receita(receita, vh)
-    out = ReceitaDetalhe.model_validate(receita)
-    out.__dict__.update(calc)
-    return out
+    return ReceitaDetalhe(**ReceitaOut.model_validate(receita).model_dump(), **calc)
 
 
 @router.put("/{id}", response_model=ReceitaDetalhe)
@@ -207,9 +203,7 @@ def atualizar(
     db.refresh(receita)
     vh = get_valor_hora_padrao(user, db)
     calc = calcular_receita(receita, vh)
-    out = ReceitaDetalhe.model_validate(receita)
-    out.__dict__.update(calc)
-    return out
+    return ReceitaDetalhe(**ReceitaOut.model_validate(receita).model_dump(), **calc)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
