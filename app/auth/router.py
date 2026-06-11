@@ -1,15 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.models import User, Configuracao, Canal
 from app.auth.schemas import UserCreate, UserLogin, Token, UserOut, ConfiguracaoOut, ConfiguracaoUpdate
 from app.auth.utils import hash_senha, verificar_senha, criar_token, get_usuario_atual
+from app.ratelimit import RateLimiter
 
 router = APIRouter(prefix="/auth", tags=["Autenticação"])
 
+_login_limiter = RateLimiter(10, 300, "Muitas tentativas de login. Aguarde alguns minutos.")
+_register_limiter = RateLimiter(5, 3600, "Muitas contas criadas a partir deste endereço. Tente mais tarde.")
+
+
+def _ip(request: Request) -> str:
+    return request.client.host if request.client else "desconhecido"
+
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
-def registrar(dados: UserCreate, db: Session = Depends(get_db)):
+def registrar(dados: UserCreate, request: Request, db: Session = Depends(get_db)):
+    _register_limiter.checar(_ip(request))
     if db.query(User).filter(User.email == dados.email).first():
         raise HTTPException(status_code=400, detail="E-mail já cadastrado")
 
@@ -35,7 +45,12 @@ def registrar(dados: UserCreate, db: Session = Depends(get_db)):
         ativo=True,
     )
     db.add(ifood)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Race no check-then-insert: dois registers simultâneos do mesmo e-mail
+        db.rollback()
+        raise HTTPException(status_code=400, detail="E-mail já cadastrado")
     db.refresh(user)
 
     token = criar_token({"sub": str(user.id)})
@@ -43,7 +58,8 @@ def registrar(dados: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-def login(dados: UserLogin, db: Session = Depends(get_db)):
+def login(dados: UserLogin, request: Request, db: Session = Depends(get_db)):
+    _login_limiter.checar(_ip(request))
     user = db.query(User).filter(User.email == dados.email).first()
     if not user or not verificar_senha(dados.senha, user.senha_hash):
         raise HTTPException(

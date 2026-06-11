@@ -63,7 +63,7 @@ def atualizar(
     ).first()
     if not colab:
         raise HTTPException(status_code=404, detail="Colaborador não encontrado")
-    for campo, valor in dados.model_dump(exclude_none=True).items():
+    for campo, valor in dados.model_dump(exclude_unset=True).items():
         setattr(colab, campo, valor)
     db.commit()
     db.refresh(colab)

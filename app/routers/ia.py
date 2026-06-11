@@ -1,15 +1,14 @@
 import base64
+import io
 import json
 import os
-import threading
-import time
-from collections import defaultdict
 
 import anthropic
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.auth.utils import get_usuario_atual
 from app.models.models import User
+from app.ratelimit import RateLimiter
 
 router = APIRouter(prefix="/ia", tags=["IA"])
 
@@ -17,24 +16,12 @@ UNIDADES_VALIDAS = {"g", "kg", "ml", "L", "unid"}
 
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
 
-# Rate limit em memória (1 worker uvicorn) — protege os créditos da API Anthropic
-RATE_LIMIT_CHAMADAS = 10
-RATE_LIMIT_JANELA_S = 600
-_chamadas_por_usuario: dict = defaultdict(list)
-_rate_lock = threading.Lock()
+# Protege os créditos da API Anthropic
+_ia_limiter = RateLimiter(10, 600, "Limite de importações via IA atingido. Tente novamente em alguns minutos.")
 
 
 def _checar_rate_limit(user_id: int):
-    agora = time.time()
-    with _rate_lock:
-        recentes = [t for t in _chamadas_por_usuario[user_id] if agora - t < RATE_LIMIT_JANELA_S]
-        if len(recentes) >= RATE_LIMIT_CHAMADAS:
-            raise HTTPException(
-                status_code=429,
-                detail="Limite de importações via IA atingido. Tente novamente em alguns minutos.",
-            )
-        recentes.append(agora)
-        _chamadas_por_usuario[user_id] = recentes
+    _ia_limiter.checar(user_id)
 
 
 def _ler_upload(file: UploadFile) -> bytes:
@@ -116,14 +103,43 @@ def _model():
     return os.getenv("ANTHROPIC_MODEL", "claude-opus-4-5")
 
 
-def _parse(resp) -> dict:
+def _extrair_texto_excel(content: bytes) -> str:
+    try:
+        import openpyxl
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Suporte a Excel não instalado no servidor.")
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Não foi possível ler o arquivo Excel. Tente CSV ou foto.")
+    linhas = []
+    for ws in wb.worksheets:
+        linhas.append(f"--- Planilha: {ws.title} ---")
+        for row in ws.iter_rows(values_only=True):
+            celulas = [str(c) for c in row if c is not None]
+            if celulas:
+                linhas.append("\t".join(celulas))
+    wb.close()
+    texto = "\n".join(linhas)
+    if not texto.strip():
+        raise HTTPException(status_code=422, detail="Planilha vazia.")
+    return texto[:100_000]  # limite defensivo de tamanho do prompt
+
+
+def _parse(resp, chave_lista: str) -> dict:
+    """Extrai e valida o JSON da resposta: precisa ser objeto com `chave_lista` lista."""
     if not resp.content or not hasattr(resp.content[0], "text"):
         raise HTTPException(status_code=422, detail="A IA retornou uma resposta vazia. Tente novamente.")
     text = resp.content[0].text.strip()
     if text.startswith("```"):
         lines = text.splitlines()
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-    return json.loads(text.strip())
+    data = json.loads(text.strip())
+    if not isinstance(data, dict) or not isinstance(data.get(chave_lista), list):
+        raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
+    if not data[chave_lista]:
+        raise HTTPException(status_code=422, detail="Nenhum item foi identificado no documento. Tente uma foto mais nítida.")
+    return data
 
 
 def _image_block(content: bytes, media_type: str) -> dict:
@@ -150,11 +166,13 @@ def processar_nota_fiscal(
             max_tokens=4096,
             messages=[{"role": "user", "content": [block, {"type": "text", "text": PROMPT_NOTA}]}],
         )
-        data = _parse(resp)
+        data = _parse(resp, "itens")
         # Normalise units
-        for item in data.get("itens", []):
-            if item.get("unidade") not in UNIDADES_VALIDAS:
-                item["unidade"] = "unid"
+        for item in data["itens"]:
+            if not isinstance(item, dict) or item.get("unidade") not in UNIDADES_VALIDAS:
+                if isinstance(item, dict):
+                    item["unidade"] = "unid"
+        data["itens"] = [i for i in data["itens"] if isinstance(i, dict)]
         return data
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
@@ -170,9 +188,15 @@ def processar_receitas(
     _checar_rate_limit(user.id)
     content = _ler_upload(file)
     mt = file.content_type or ""
+    nome_arquivo = (file.filename or "").lower()
 
-    is_text = any(t in mt for t in ("spreadsheet", "excel", "csv", "plain", "text"))
-    if is_text:
+    is_xlsx = "spreadsheet" in mt or "excel" in mt or nome_arquivo.endswith((".xlsx", ".xls"))
+    is_text = any(t in mt for t in ("csv", "plain", "text")) or nome_arquivo.endswith((".csv", ".txt"))
+    if is_xlsx:
+        # .xlsx é ZIP binário — decodificar como UTF-8 mandaria lixo ao Claude
+        texto = _extrair_texto_excel(content)
+        messages = [{"role": "user", "content": f"Conteúdo do arquivo:\n\n{texto}\n\n{PROMPT_RECEITAS}"}]
+    elif is_text:
         texto = content.decode("utf-8", errors="replace")
         messages = [{"role": "user", "content": f"Conteúdo do arquivo:\n\n{texto}\n\n{PROMPT_RECEITAS}"}]
     else:
@@ -181,7 +205,9 @@ def processar_receitas(
 
     try:
         resp = _client().messages.create(model=_model(), max_tokens=4096, messages=messages)
-        return _parse(resp)
+        data = _parse(resp, "receitas")
+        data["receitas"] = [r for r in data["receitas"] if isinstance(r, dict)]
+        return data
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
     except anthropic.APIError as e:

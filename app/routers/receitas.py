@@ -173,7 +173,8 @@ def atualizar(
 
     if dados.nome is not None:
         receita.nome = dados.nome
-    if dados.tipo is not None:
+    # tipo é anulável: enviar null limpa o campo (frontend manda tipo: null)
+    if "tipo" in dados.model_fields_set:
         receita.tipo = dados.tipo
     if dados.rendimento_g is not None:
         receita.rendimento_g = dados.rendimento_g

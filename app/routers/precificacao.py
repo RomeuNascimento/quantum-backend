@@ -108,7 +108,7 @@ def atualizar_canal(
     canal = db.query(Canal).filter(Canal.id == id, Canal.user_id == user.id).first()
     if not canal:
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    for campo, valor in dados.model_dump(exclude_none=True).items():
+    for campo, valor in dados.model_dump(exclude_unset=True).items():
         setattr(canal, campo, valor)
     db.commit()
     db.refresh(canal)
@@ -231,7 +231,7 @@ def atualizar_preco_produto(
     if not pp:
         raise HTTPException(status_code=404, detail="Precificação não encontrada")
 
-    for campo, valor in dados.model_dump(exclude_none=True).items():
+    for campo, valor in dados.model_dump(exclude_unset=True).items():
         setattr(pp, campo, valor)
     db.commit()
     db.refresh(pp)

@@ -127,7 +127,7 @@ def atualizar(
     if not ing:
         raise HTTPException(status_code=404, detail="Ingrediente não encontrado")
 
-    for campo, valor in dados.model_dump(exclude_none=True).items():
+    for campo, valor in dados.model_dump(exclude_unset=True).items():
         setattr(ing, campo, valor)
 
     db.commit()

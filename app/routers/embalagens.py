@@ -110,7 +110,7 @@ def atualizar(
     if not emb:
         raise HTTPException(status_code=404, detail="Embalagem não encontrada")
 
-    for campo, valor in dados.model_dump(exclude_none=True).items():
+    for campo, valor in dados.model_dump(exclude_unset=True).items():
         setattr(emb, campo, valor)
 
     db.commit()

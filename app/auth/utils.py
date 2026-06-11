@@ -38,13 +38,11 @@ def get_usuario_atual(
     try:
         settings = get_settings()
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-        user_id: int = payload.get("sub")
-        if user_id is None:
-            raise credencial_invalida
-    except JWTError:
+        user_id = int(payload.get("sub"))
+    except (JWTError, TypeError, ValueError):
         raise credencial_invalida
 
-    user = db.query(User).filter(User.id == int(user_id)).first()
+    user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise credencial_invalida
     return user

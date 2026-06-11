@@ -60,7 +60,7 @@ def atualizar(
     cf = db.query(CustoFixo).filter(CustoFixo.id == id, CustoFixo.user_id == user.id).first()
     if not cf:
         raise HTTPException(status_code=404, detail="Custo fixo não encontrado")
-    for campo, valor in dados.model_dump(exclude_none=True).items():
+    for campo, valor in dados.model_dump(exclude_unset=True).items():
         setattr(cf, campo, valor)
     db.commit()
     db.refresh(cf)
