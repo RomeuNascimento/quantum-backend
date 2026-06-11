@@ -3,8 +3,8 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-11
-**Próxima sessão:** continuar a partir da Fase 2 (relatórios de margem)
+**Última sessão:** 2026-06-11 (tarde — branch `claude/keen-ptolemy-mmed2k`, continua a `claude/sharp-noether-6ml8uh`)
+**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo) ou Fase 1 restante (M1/M5–M8)
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -264,9 +264,14 @@ Multi-tenancy disciplinado nas leituras (todos os SELECTs raiz filtram `user_id`
 ### Onde continuar
 
 **Fase 2 — Features de relatório (prioridade):**
-1. Endpoint `GET /produtos/relatorio-margem` — agrega por produto todos os canais com `preco_final`, `custo_total`, `margem_real`; dados já prontos em `listarPrecosProduto`
-2. Extrair lógica de cálculo de custo como função reutilizável (hoje duplicada entre `calcular_produto` e `historico_custo`)
-3. Endpoint de snapshot de custo por produto para série temporal (base para gráficos de evolução)
+1. [x] **Endpoint `GET /precificacao/relatorio-margem`** ✅ 2026-06-11 (branch `claude/keen-ptolemy-mmed2k`) — agrega por produto ativo todos os canais ativos: `margem_real_pct = (1 − taxas − custo/preço_praticado) × 100`, `preco_praticado = preco_final ou preco_sugerido`, `lucro_unitario`. Em `precificacao.py` (não `/produtos/...`) para evitar import circular de `calcular_preco_sugerido` e colisão com rota `/produtos/{id}`.
+2. [ ] Extrair lógica de cálculo de custo como função reutilizável (hoje duplicada entre `calcular_produto` e `historico_custo`)
+3. [ ] Endpoint de snapshot de custo por produto para série temporal (base para gráficos de evolução)
+
+**Fixes críticos descobertos em teste funcional (2026-06-11, mesma branch):**
+- `POST /ingredientes/{id}/precos` e `POST /embalagens/{id}/precos` retornavam **500 sempre**: `custo_unitario` obrigatório sem default no schema Out, validado antes de ser setado → default `0.0` adicionado
+- `criar/detalhar/atualizar` de receitas e produtos: `Detalhe.model_validate(orm)` validava relacionamentos ORM contra schemas de campos calculados (`ingrediente_nome`, `custo`...) → 500. Agora a resposta é construída como `Detalhe(**Out.model_validate(orm).model_dump(), **calc)`
+- Smoke test completo (sqlite + TestClient): register → ingrediente+preço → embalagem+preço → receita → produto → precificação → relatorio-margem ✓ (matemática conferida)
 
 **Fase 1 restante (antes de Fase 2):**
 - M1: Migrar colunas monetárias de `Float` → `Numeric(12,4)` (pré-requisito para relatórios precisos)
