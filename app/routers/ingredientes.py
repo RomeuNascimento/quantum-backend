@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import desc
 from typing import List
 from datetime import datetime
@@ -29,7 +29,9 @@ def preco_mais_recente(ingrediente: Ingrediente) -> IngredientePreco | None:
 
 @router.get("/", response_model=List[IngredienteOut])
 def listar(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db)):
-    ingredientes = db.query(Ingrediente).filter(
+    ingredientes = db.query(Ingrediente).options(
+        selectinload(Ingrediente.precos)
+    ).filter(
         Ingrediente.user_id == user.id, Ingrediente.ativo == True
     ).all()
     result = []

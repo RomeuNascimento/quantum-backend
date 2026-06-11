@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List
 from collections import defaultdict
 from datetime import date as date_type
@@ -7,7 +7,8 @@ from app.database import get_db
 from app.auth.utils import get_usuario_atual
 from app.models.models import (
     User, Produto, ProdutoMassa, ProdutoRecheio, ProdutoIngrediente,
-    ProdutoEmbalagem, ProdutoMOMontagem, Receita, Ingrediente, Embalagem,
+    ProdutoEmbalagem, ProdutoMOMontagem, Receita, ReceitaIngrediente,
+    ReceitaMOEtapa, Ingrediente, Embalagem,
     Colaborador, IngredientePreco, EmbalagemPreco
 )
 from app.schemas.produtos import (
@@ -26,6 +27,28 @@ def _validar_componentes(db: Session, user: User, preparacoes, ingredientes, emb
     validar_ids_do_usuario(db, Ingrediente, (i.ingrediente_id for i in ingredientes or []), user.id, "Ingrediente")
     validar_ids_do_usuario(db, Embalagem, (e.embalagem_id for e in embalagens or []), user.id, "Embalagem")
     validar_ids_do_usuario(db, Colaborador, (mo.colaborador_id for mo in mo_montagem or []), user.id, "Colaborador")
+
+
+def query_produto_completo(db: Session):
+    """Query de Produto com todos os relacionamentos usados por calcular_produto
+    pré-carregados — sem isso a cascata lazy gera 30-80 queries por produto."""
+    receita_completa = [
+        selectinload(Receita.ingredientes)
+        .selectinload(ReceitaIngrediente.ingrediente)
+        .selectinload(Ingrediente.precos),
+        selectinload(Receita.etapas_mo).selectinload(ReceitaMOEtapa.colaborador),
+    ]
+    return db.query(Produto).options(
+        selectinload(Produto.massas).selectinload(ProdutoMassa.receita).options(*receita_completa),
+        selectinload(Produto.recheios).selectinload(ProdutoRecheio.receita).options(*receita_completa),
+        selectinload(Produto.ingredientes)
+        .selectinload(ProdutoIngrediente.ingrediente)
+        .selectinload(Ingrediente.precos),
+        selectinload(Produto.embalagens)
+        .selectinload(ProdutoEmbalagem.embalagem)
+        .selectinload(Embalagem.precos),
+        selectinload(Produto.mo_montagem).selectinload(ProdutoMOMontagem.colaborador),
+    )
 
 
 def custo_unitario_embalagem(embalagem: Embalagem) -> float:
@@ -160,7 +183,7 @@ def detalhar(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
-    produto = db.query(Produto).filter(
+    produto = query_produto_completo(db).filter(
         Produto.id == id, Produto.user_id == user.id
     ).first()
     if not produto:
@@ -245,7 +268,7 @@ def historico_custo(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
-    produto = db.query(Produto).filter(
+    produto = query_produto_completo(db).filter(
         Produto.id == id, Produto.user_id == user.id
     ).first()
     if not produto:

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List
 from app.database import get_db
 from app.auth.utils import get_usuario_atual
@@ -138,7 +138,12 @@ def detalhar(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
-    receita = db.query(Receita).filter(
+    receita = db.query(Receita).options(
+        selectinload(Receita.ingredientes)
+        .selectinload(ReceitaIngrediente.ingrediente)
+        .selectinload(Ingrediente.precos),
+        selectinload(Receita.etapas_mo).selectinload(ReceitaMOEtapa.colaborador),
+    ).filter(
         Receita.id == id, Receita.user_id == user.id
     ).first()
     if not receita:

@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, DateTime,
-    ForeignKey, Enum, Text
+    ForeignKey, Enum, Text, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -284,6 +284,9 @@ class Canal(Base):
 
 class ProdutoPreco(Base):
     __tablename__ = "produto_precos"
+    __table_args__ = (
+        UniqueConstraint("produto_id", "canal_id", name="uq_produto_precos_produto_canal"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)

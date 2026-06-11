@@ -8,7 +8,7 @@ from app.schemas.precificacao import (
     CanalCreate, CanalUpdate, CanalOut,
     ProdutoPrecoCreate, ProdutoPrecoUpdate, ProdutoPrecoOut
 )
-from app.routers.produtos import calcular_produto
+from app.routers.produtos import calcular_produto, query_produto_completo
 from app.routers.receitas import get_valor_hora_padrao
 
 router = APIRouter(prefix="/precificacao", tags=["Precificação"])
@@ -80,7 +80,7 @@ def listar_precos_produto(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
-    produto = db.query(Produto).filter(
+    produto = query_produto_completo(db).filter(
         Produto.id == produto_id, Produto.user_id == user.id
     ).first()
     if not produto:
@@ -116,7 +116,7 @@ def criar_preco_produto(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
-    produto = db.query(Produto).filter(
+    produto = query_produto_completo(db).filter(
         Produto.id == produto_id, Produto.user_id == user.id
     ).first()
     if not produto:
@@ -163,7 +163,7 @@ def atualizar_preco_produto(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
-    produto = db.query(Produto).filter(
+    produto = query_produto_completo(db).filter(
         Produto.id == produto_id, Produto.user_id == user.id
     ).first()
     if not produto:
@@ -204,7 +204,7 @@ def deletar_preco_produto(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
-    produto = db.query(Produto).filter(
+    produto = query_produto_completo(db).filter(
         Produto.id == produto_id, Produto.user_id == user.id
     ).first()
     if not produto:

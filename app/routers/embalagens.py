@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List
 from app.database import get_db
 from app.auth.utils import get_usuario_atual
@@ -20,7 +20,9 @@ def calcular_custo_unitario(preco: EmbalagemPreco) -> float:
 
 @router.get("/", response_model=List[EmbalagemOut])
 def listar(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db)):
-    embalagens = db.query(Embalagem).filter(
+    embalagens = db.query(Embalagem).options(
+        selectinload(Embalagem.precos)
+    ).filter(
         Embalagem.user_id == user.id, Embalagem.ativo == True
     ).all()
     result = []
