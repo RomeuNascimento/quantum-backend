@@ -117,7 +117,7 @@ migrations/
 ## Regras de negócio críticas
 
 1. **Multi-tenant:** Todo SELECT filtra por `user_id` do token JWT
-2. **Custo unitário ingrediente:** `(preco / qtd_embalagem) / fator_correcao` — sempre pelo registro mais recente
+2. **Custo unitário ingrediente:** `(preco / (qtd_embalagem × fator_unidade)) / fator_correcao` — registro mais recente; `fator_unidade` = 1000 para kg/L, 1 para g/ml/unid (consumo é sempre em g/ml)
 3. **Custo unitário embalagem:** `preco / qtd_embalagem` — registro mais recente
 4. **Custos de receita:** Calculados na API, nunca persistidos
 5. **Custo proporcional produto:** `fator = qtd_usada / rendimento_g` → aplica sobre custo_mp e custo_mo da receita
@@ -195,7 +195,7 @@ curl -X POST https://panel.quantumcalc.com.br/api/trpc/services.app.deployServic
 
 - [ ] **M1. Float para dinheiro** — `models/models.py`: todas as colunas monetárias são `Float`. Migrar para `Numeric(12,4)` + `Decimal` ANTES de ter histórico de relatórios (depois fica caro).
 - [x] **M2. N+1 queries generalizadas** ✅ 2026-06-11 — `query_produto_completo()` (selectinload) em produtos/precificação; listas e detalhe de receita com selectinload; índices na migration 004 — nenhum endpoint usa `selectinload`; `GET /produtos/{id}` dispara 30–80 queries. Faltam índices nas FKs (`ingrediente_precos.ingrediente_id`, `receita_ingredientes.*`, `produto_massas.produto_id`, `produto_precos.produto_id`). Pré-requisito para relatórios/gráficos.
-- [ ] **M3. Ambiguidade de unidades (kg/L vs g/ml)** — custo = `preco/quantidade_embalagem`, consumo = `quantidade_g`; se o usuário cadastra embalagem em kg e usa g na receita, custo sai 1000× errado. Não há conversão nem validação. ⚠️ DECISÃO PENDENTE do usuário: normalizar tudo para g/ml na escrita OU converter por unidade no cálculo (afeta dados existentes em produção).
+- [x] **M3. Ambiguidade de unidades** ✅ 2026-06-11 — DECISÃO: converter no cálculo. `app/routers/unidades.py:fator_unidade()` (kg/L → ×1000) aplicado em custo_unitario_ingrediente, calcular_custo_unitario e historico_custo. ⚠️ AUDITAR após deploy: ingredientes com unidade kg/L cujo quantidade_embalagem já estava em gramas (workaround antigo) terão custo ÷1000 — conferir os cadastros kg/L existentes — custo = `preco/quantidade_embalagem`, consumo = `quantidade_g`; se o usuário cadastra embalagem em kg e usa g na receita, custo sai 1000× errado. Não há conversão nem validação. ⚠️ DECISÃO PENDENTE do usuário: normalizar tudo para g/ml na escrita OU converter por unidade no cálculo (afeta dados existentes em produção).
 - [x] **M4. UNIQUE em `produto_precos`** ✅ 2026-06-11 — migration 004 (dedupe + constraint) + UniqueConstraint no model — race no check-then-insert (`precificacao.py:129-134`) cria preço duplicado por canal. Idem race no register (IntegrityError → 500).
 - [ ] **M5. Auth sem proteção** — sem rate limiting em login/register (brute force), register revela e-mails cadastrados, JWT 30min sem refresh token (usuário deslogado a cada 30min).
 - [ ] **M6. `PUT` com `exclude_none=True` impede limpar campos** — padrão em todos os routers: impossível setar `marca`/`tipo`/`preco_final` para null ao editar.

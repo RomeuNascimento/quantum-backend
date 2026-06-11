@@ -12,6 +12,7 @@ from app.schemas.receitas import (
     ReceitaIngredienteOut, ReceitaMOEtapaOut
 )
 from app.routers.ownership import validar_ids_do_usuario
+from app.routers.unidades import fator_unidade
 
 router = APIRouter(prefix="/receitas", tags=["Receitas"])
 
@@ -23,7 +24,8 @@ def custo_unitario_ingrediente(ingrediente: Ingrediente) -> float:
     p = precos[0]
     if p.quantidade_embalagem == 0 or ingrediente.fator_correcao == 0:
         return 0.0
-    return (p.preco / p.quantidade_embalagem) / ingrediente.fator_correcao
+    base = p.quantidade_embalagem * fator_unidade(ingrediente.unidade)
+    return (p.preco / base) / ingrediente.fator_correcao
 
 
 def calcular_receita(receita: Receita, valor_hora_padrao: float) -> dict:

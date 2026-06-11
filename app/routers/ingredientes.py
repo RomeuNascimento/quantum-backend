@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import desc
 from typing import List
 from datetime import datetime
+from app.routers.unidades import fator_unidade
 from app.database import get_db
 from app.auth.utils import get_usuario_atual
 from app.models.models import User, Ingrediente, IngredientePreco, ReceitaIngrediente, ProdutoIngrediente
@@ -14,10 +15,11 @@ from app.schemas.ingredientes import (
 router = APIRouter(prefix="/ingredientes", tags=["Ingredientes"])
 
 
-def calcular_custo_unitario(preco: IngredientePreco, fator_correcao: float) -> float:
+def calcular_custo_unitario(preco: IngredientePreco, fator_correcao: float, unidade=None) -> float:
     if preco is None or preco.quantidade_embalagem == 0 or fator_correcao == 0:
         return 0.0
-    return (preco.preco / preco.quantidade_embalagem) / fator_correcao
+    base = preco.quantidade_embalagem * fator_unidade(unidade)
+    return (preco.preco / base) / fator_correcao
 
 
 def preco_mais_recente(ingrediente: Ingrediente) -> IngredientePreco | None:
@@ -40,7 +42,7 @@ def listar(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db
             (p for p in sorted(ing.precos, key=lambda x: x.data_compra, reverse=True)),
             None
         )
-        custo = calcular_custo_unitario(ultimo, ing.fator_correcao) if ultimo else None
+        custo = calcular_custo_unitario(ultimo, ing.fator_correcao, ing.unidade) if ultimo else None
         out = IngredienteOut.model_validate(ing)
         out.custo_unitario_atual = custo
         result.append(out)
@@ -75,7 +77,7 @@ def criar(
         )
         db.add(preco)
         db.flush()
-        custo = calcular_custo_unitario(preco, ing.fator_correcao)
+        custo = calcular_custo_unitario(preco, ing.fator_correcao, ing.unidade)
 
     db.commit()
     db.refresh(ing)
@@ -98,12 +100,12 @@ def detalhar(
 
     precos_ordenados = sorted(ing.precos, key=lambda x: x.data_compra, reverse=True)
     ultimo = precos_ordenados[0] if precos_ordenados else None
-    custo_atual = calcular_custo_unitario(ultimo, ing.fator_correcao) if ultimo else None
+    custo_atual = calcular_custo_unitario(ultimo, ing.fator_correcao, ing.unidade) if ultimo else None
 
     precos_out = []
     for p in precos_ordenados:
         po = IngredientePrecoOut.model_validate(p)
-        po.custo_unitario = calcular_custo_unitario(p, ing.fator_correcao)
+        po.custo_unitario = calcular_custo_unitario(p, ing.fator_correcao, ing.unidade)
         precos_out.append(po)
 
     out = IngredienteDetalhe.model_validate(ing)
@@ -131,7 +133,7 @@ def atualizar(
     db.commit()
     db.refresh(ing)
     precos = sorted(ing.precos, key=lambda x: x.data_compra, reverse=True)
-    custo = calcular_custo_unitario(precos[0], ing.fator_correcao) if precos else None
+    custo = calcular_custo_unitario(precos[0], ing.fator_correcao, ing.unidade) if precos else None
     out = IngredienteOut.model_validate(ing)
     out.custo_unitario_atual = custo
     return out
@@ -186,5 +188,5 @@ def adicionar_preco(
     db.commit()
     db.refresh(preco)
     out = IngredientePrecoOut.model_validate(preco)
-    out.custo_unitario = calcular_custo_unitario(preco, ing.fator_correcao)
+    out.custo_unitario = calcular_custo_unitario(preco, ing.fator_correcao, ing.unidade)
     return out

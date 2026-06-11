@@ -18,6 +18,7 @@ from app.schemas.produtos import (
 )
 from app.routers.receitas import calcular_receita, get_valor_hora_padrao, custo_unitario_ingrediente
 from app.routers.ownership import validar_ids_do_usuario
+from app.routers.unidades import fator_unidade
 
 router = APIRouter(prefix="/produtos", tags=["Produtos"])
 
@@ -340,7 +341,8 @@ def historico_custo(
                 ing = ri.ingrediente
                 p = price_at(ing_prices.get(ri.ingrediente_id, []), d)
                 if p and p.quantidade_embalagem > 0 and ing.fator_correcao > 0:
-                    custo_mp_rec += (p.preco / p.quantidade_embalagem / ing.fator_correcao) * ri.quantidade_g
+                    base = p.quantidade_embalagem * fator_unidade(ing.unidade)
+                    custo_mp_rec += (p.preco / base / ing.fator_correcao) * ri.quantidade_g
             custo_mo_rec = sum(
                 ((et.colaborador.valor_hora if et.colaborador_id and et.colaborador else vh) / 60) * et.tempo_min
                 for et in receita.etapas_mo
@@ -351,7 +353,8 @@ def historico_custo(
         for ing, qtd in ing_avulso_entries:
             p = price_at(ing_prices.get(ing.id, []), d)
             if p and p.quantidade_embalagem > 0 and ing.fator_correcao > 0:
-                custo += (p.preco / p.quantidade_embalagem / ing.fator_correcao) * qtd
+                base = p.quantidade_embalagem * fator_unidade(ing.unidade)
+                custo += (p.preco / base / ing.fator_correcao) * qtd
 
         # Embalagens
         for emb, qtd in emb_entries:
