@@ -30,7 +30,7 @@ class IngredienteCreate(BaseModel):
     nome: str = Field(min_length=1)
     marca: Optional[str] = None
     unidade: UnidadeEnum
-    fator_correcao: float = Field(default=1.0, gt=0)
+    fator_correcao: float = Field(default=1.0, ge=0)  # 0 = sem correção (tratado como 1 no cálculo)
     preco_inicial: Optional[IngredientePrecoCreate] = None
 
 
@@ -38,7 +38,7 @@ class IngredienteUpdate(BaseModel):
     nome: Optional[str] = Field(default=None, min_length=1)
     marca: Optional[str] = None
     unidade: Optional[UnidadeEnum] = None
-    fator_correcao: Optional[float] = Field(default=None, gt=0)
+    fator_correcao: Optional[float] = Field(default=None, ge=0)
 
 
 class IngredienteOut(BaseModel):

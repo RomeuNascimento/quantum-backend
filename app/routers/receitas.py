@@ -22,10 +22,11 @@ def custo_unitario_ingrediente(ingrediente: Ingrediente) -> float:
     if not precos:
         return 0.0
     p = precos[0]
-    if p.quantidade_embalagem == 0 or ingrediente.fator_correcao == 0:
+    if p.quantidade_embalagem == 0:
         return 0.0
     base = p.quantidade_embalagem * fator_unidade(ingrediente.unidade)
-    return (p.preco / base) / ingrediente.fator_correcao
+    fator = ingrediente.fator_correcao if ingrediente.fator_correcao and ingrediente.fator_correcao > 0 else 1.0
+    return (p.preco / base) / fator
 
 
 def calcular_receita(receita: Receita, valor_hora_padrao: float) -> dict:

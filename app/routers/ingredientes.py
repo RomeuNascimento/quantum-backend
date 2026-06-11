@@ -16,10 +16,10 @@ router = APIRouter(prefix="/ingredientes", tags=["Ingredientes"])
 
 
 def calcular_custo_unitario(preco: IngredientePreco, fator_correcao: float, unidade=None) -> float:
-    if preco is None or preco.quantidade_embalagem == 0 or fator_correcao == 0:
+    if preco is None or preco.quantidade_embalagem == 0:
         return 0.0
     base = preco.quantidade_embalagem * fator_unidade(unidade)
-    return (preco.preco / base) / fator_correcao
+    return (preco.preco / base) / (fator_correcao if fator_correcao > 0 else 1.0)
 
 
 def preco_mais_recente(ingrediente: Ingrediente) -> IngredientePreco | None:

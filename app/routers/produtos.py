@@ -334,9 +334,10 @@ def historico_custo(
             for ri in receita.ingredientes:
                 ing = ri.ingrediente
                 p = price_at(ing_prices.get(ri.ingrediente_id, []), d)
-                if p and p.quantidade_embalagem > 0 and ing.fator_correcao > 0:
+                if p and p.quantidade_embalagem > 0:
                     base = p.quantidade_embalagem * fator_unidade(ing.unidade)
-                    custo_mp_rec += (p.preco / base / ing.fator_correcao) * ri.quantidade_g
+                    fc = ing.fator_correcao if ing.fator_correcao and ing.fator_correcao > 0 else 1.0
+                    custo_mp_rec += (p.preco / base / fc) * ri.quantidade_g
             custo_mo_rec = sum(
                 ((et.colaborador.valor_hora if et.colaborador_id and et.colaborador else vh) / 60) * et.tempo_min
                 for et in receita.etapas_mo
@@ -346,9 +347,10 @@ def historico_custo(
         # Ingredientes avulsos
         for ing, qtd in ing_avulso_entries:
             p = price_at(ing_prices.get(ing.id, []), d)
-            if p and p.quantidade_embalagem > 0 and ing.fator_correcao > 0:
+            if p and p.quantidade_embalagem > 0:
                 base = p.quantidade_embalagem * fator_unidade(ing.unidade)
-                custo += (p.preco / base / ing.fator_correcao) * qtd
+                fc = ing.fator_correcao if ing.fator_correcao and ing.fator_correcao > 0 else 1.0
+                custo += (p.preco / base / fc) * qtd
 
         # Embalagens
         for emb, qtd in emb_entries:
