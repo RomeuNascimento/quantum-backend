@@ -3,8 +3,8 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-11 (tarde — branch `claude/keen-ptolemy-mmed2k`, continua a `claude/sharp-noether-6ml8uh`)
-**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo) ou Fase 1 restante (M1/M5–M8)
+**Última sessão:** 2026-06-11 (noite — branch `claude/keen-ptolemy-mmed2k`)
+**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo) ou M1 (Float → Numeric)
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -272,6 +272,11 @@ Multi-tenancy disciplinado nas leituras (todos os SELECTs raiz filtram `user_id`
 - `POST /ingredientes/{id}/precos` e `POST /embalagens/{id}/precos` retornavam **500 sempre**: `custo_unitario` obrigatório sem default no schema Out, validado antes de ser setado → default `0.0` adicionado
 - `criar/detalhar/atualizar` de receitas e produtos: `Detalhe.model_validate(orm)` validava relacionamentos ORM contra schemas de campos calculados (`ingrediente_nome`, `custo`...) → 500. Agora a resposta é construída como `Detalhe(**Out.model_validate(orm).model_dump(), **calc)`
 - Smoke test completo (sqlite + TestClient): register → ingrediente+preço → embalagem+preço → receita → produto → precificação → relatorio-margem ✓ (matemática conferida)
+
+### Sessão 2026-06-11 (noite)
+
+- **`fator_correcao` aceita 0** — schemas `ge=0`; nos cálculos (ingredientes, receitas, produtos ×2) `fator_correcao` 0/None é tratado como 1.0 (sem correção) em vez de zerar o custo.
+- **`scripts/seed_demo.py`** (novo) — popula conta demo via API (`demo@quantumcalc.com.br / demo12345`): 7 ingredientes com histórico de preços (~90 dias, com aumentos), 2 embalagens, 2 receitas, 2 produtos, precificação (iFood com preco_final baixo → aciona alerta de margem; Encomenda direta 35%), 4 custos fixos. Idempotente. Uso: `pip install requests && python scripts/seed_demo.py [URL]`. ⚠️ Exige redeploy do backend para o arquivo existir no container.
 
 **Fase 1 restante (antes de Fase 2):**
 - M1: Migrar colunas monetárias de `Float` → `Numeric(12,4)` (pré-requisito para relatórios precisos)
