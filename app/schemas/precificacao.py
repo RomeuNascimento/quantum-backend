@@ -1,19 +1,19 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 
 class CanalCreate(BaseModel):
-    nome: str
-    taxa_plataforma_pct: float = 0.0
-    taxa_cartao_pct: float = 0.0
-    imposto_pct: float = 0.0
+    nome: str = Field(min_length=1)
+    taxa_plataforma_pct: float = Field(default=0.0, ge=0, lt=100)
+    taxa_cartao_pct: float = Field(default=0.0, ge=0, lt=100)
+    imposto_pct: float = Field(default=0.0, ge=0, lt=100)
 
 
 class CanalUpdate(BaseModel):
-    nome: Optional[str] = None
-    taxa_plataforma_pct: Optional[float] = None
-    taxa_cartao_pct: Optional[float] = None
-    imposto_pct: Optional[float] = None
+    nome: Optional[str] = Field(default=None, min_length=1)
+    taxa_plataforma_pct: Optional[float] = Field(default=None, ge=0, lt=100)
+    taxa_cartao_pct: Optional[float] = Field(default=None, ge=0, lt=100)
+    imposto_pct: Optional[float] = Field(default=None, ge=0, lt=100)
     ativo: Optional[bool] = None
 
 
@@ -31,13 +31,13 @@ class CanalOut(BaseModel):
 
 class ProdutoPrecoCreate(BaseModel):
     canal_id: int
-    margem_pct: float
-    preco_final: Optional[float] = None
+    margem_pct: float = Field(ge=0, lt=100)
+    preco_final: Optional[float] = Field(default=None, gt=0)
 
 
 class ProdutoPrecoUpdate(BaseModel):
-    margem_pct: Optional[float] = None
-    preco_final: Optional[float] = None
+    margem_pct: Optional[float] = Field(default=None, ge=0, lt=100)
+    preco_final: Optional[float] = Field(default=None, gt=0)
 
 
 class ProdutoPrecoOut(BaseModel):

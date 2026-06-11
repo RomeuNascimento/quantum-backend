@@ -1,6 +1,11 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("quantum")
 from app.database import get_settings
 from app.auth.router import router as auth_router
 from app.routers.ingredientes import router as ingredientes_router
@@ -31,6 +36,7 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
+    logger.error("Erro não tratado em %s %s", request.method, request.url.path, exc_info=exc)
     return JSONResponse(
         status_code=500,
         content={"detail": "Erro interno no servidor. Tente novamente mais tarde."},

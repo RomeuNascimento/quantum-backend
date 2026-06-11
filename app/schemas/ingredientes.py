@@ -1,12 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List
 from app.models.models import UnidadeEnum, OrigemEnum
 
 
 class IngredientePrecoCreate(BaseModel):
-    preco: float
-    quantidade_embalagem: float
+    preco: float = Field(ge=0)
+    quantidade_embalagem: float = Field(gt=0)
     data_compra: datetime
     origem: OrigemEnum = OrigemEnum.manual
     observacao: Optional[str] = None
@@ -27,18 +27,18 @@ class IngredientePrecoOut(BaseModel):
 
 
 class IngredienteCreate(BaseModel):
-    nome: str
+    nome: str = Field(min_length=1)
     marca: Optional[str] = None
     unidade: UnidadeEnum
-    fator_correcao: float = 1.0
+    fator_correcao: float = Field(default=1.0, gt=0)
     preco_inicial: Optional[IngredientePrecoCreate] = None
 
 
 class IngredienteUpdate(BaseModel):
-    nome: Optional[str] = None
+    nome: Optional[str] = Field(default=None, min_length=1)
     marca: Optional[str] = None
     unidade: Optional[UnidadeEnum] = None
-    fator_correcao: Optional[float] = None
+    fator_correcao: Optional[float] = Field(default=None, gt=0)
 
 
 class IngredienteOut(BaseModel):

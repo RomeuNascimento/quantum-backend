@@ -11,6 +11,7 @@ from app.schemas.receitas import (
     ReceitaCreate, ReceitaUpdate, ReceitaOut, ReceitaDetalhe,
     ReceitaIngredienteOut, ReceitaMOEtapaOut
 )
+from app.routers.ownership import validar_ids_do_usuario
 
 router = APIRouter(prefix="/receitas", tags=["Receitas"])
 
@@ -93,6 +94,9 @@ def criar(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
+    validar_ids_do_usuario(db, Ingrediente, (i.ingrediente_id for i in dados.ingredientes), user.id, "Ingrediente")
+    validar_ids_do_usuario(db, Colaborador, (e.colaborador_id for e in dados.etapas_mo), user.id, "Colaborador")
+
     receita = Receita(
         user_id=user.id,
         nome=dados.nome,
@@ -103,11 +107,6 @@ def criar(
     db.flush()
 
     for ing_data in dados.ingredientes:
-        ing = db.query(Ingrediente).filter(
-            Ingrediente.id == ing_data.ingrediente_id, Ingrediente.user_id == user.id
-        ).first()
-        if not ing:
-            raise HTTPException(status_code=404, detail=f"Ingrediente {ing_data.ingrediente_id} não encontrado")
         ri = ReceitaIngrediente(
             receita_id=receita.id,
             ingrediente_id=ing_data.ingrediente_id,
@@ -163,6 +162,11 @@ def atualizar(
     ).first()
     if not receita:
         raise HTTPException(status_code=404, detail="Receita não encontrada")
+
+    if dados.ingredientes is not None:
+        validar_ids_do_usuario(db, Ingrediente, (i.ingrediente_id for i in dados.ingredientes), user.id, "Ingrediente")
+    if dados.etapas_mo is not None:
+        validar_ids_do_usuario(db, Colaborador, (e.colaborador_id for e in dados.etapas_mo), user.id, "Colaborador")
 
     if dados.nome is not None:
         receita.nome = dados.nome

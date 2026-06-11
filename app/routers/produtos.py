@@ -16,8 +16,16 @@ from app.schemas.produtos import (
     HistoricoOut, HistoricoPonto
 )
 from app.routers.receitas import calcular_receita, get_valor_hora_padrao, custo_unitario_ingrediente
+from app.routers.ownership import validar_ids_do_usuario
 
 router = APIRouter(prefix="/produtos", tags=["Produtos"])
+
+
+def _validar_componentes(db: Session, user: User, preparacoes, ingredientes, embalagens, mo_montagem):
+    validar_ids_do_usuario(db, Receita, (p.receita_id for p in preparacoes or []), user.id, "Receita")
+    validar_ids_do_usuario(db, Ingrediente, (i.ingrediente_id for i in ingredientes or []), user.id, "Ingrediente")
+    validar_ids_do_usuario(db, Embalagem, (e.embalagem_id for e in embalagens or []), user.id, "Embalagem")
+    validar_ids_do_usuario(db, Colaborador, (mo.colaborador_id for mo in mo_montagem or []), user.id, "Colaborador")
 
 
 def custo_unitario_embalagem(embalagem: Embalagem) -> float:
@@ -122,6 +130,8 @@ def criar(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
+    _validar_componentes(db, user, dados.preparacoes, dados.ingredientes, dados.embalagens, dados.mo_montagem)
+
     produto = Produto(user_id=user.id, nome=dados.nome)
     db.add(produto)
     db.flush()
@@ -174,6 +184,8 @@ def atualizar(
     ).first()
     if not produto:
         raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+    _validar_componentes(db, user, dados.preparacoes, dados.ingredientes, dados.embalagens, dados.mo_montagem)
 
     if dados.nome is not None:
         produto.nome = dados.nome

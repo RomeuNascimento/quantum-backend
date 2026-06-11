@@ -1,26 +1,26 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List
 
 
 class ProdutoPreparacaoCreate(BaseModel):
     receita_id: int
-    quantidade_g: float
+    quantidade_g: float = Field(gt=0)
 
 
 class ProdutoIngredienteCreate(BaseModel):
     ingrediente_id: int
-    quantidade_g: float
+    quantidade_g: float = Field(gt=0)
 
 
 class ProdutoEmbalagemCreate(BaseModel):
     embalagem_id: int
-    quantidade: float
+    quantidade: float = Field(gt=0)
 
 
 class ProdutoMOMontagemCreate(BaseModel):
     descricao: str
-    tempo_min: float
+    tempo_min: float = Field(ge=0)
     colaborador_id: Optional[int] = None
 
 

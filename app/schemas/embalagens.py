@@ -1,12 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List
 from app.models.models import UnidadeEnum, OrigemEnum
 
 
 class EmbalagemPrecoCreate(BaseModel):
-    preco: float
-    quantidade_embalagem: float
+    preco: float = Field(ge=0)
+    quantidade_embalagem: float = Field(gt=0)
     data_compra: datetime
     origem: OrigemEnum = OrigemEnum.manual
     observacao: Optional[str] = None

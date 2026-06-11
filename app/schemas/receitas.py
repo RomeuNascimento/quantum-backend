@@ -1,11 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List
 
 
 class ReceitaIngredienteCreate(BaseModel):
     ingrediente_id: int
-    quantidade_g: float
+    quantidade_g: float = Field(gt=0)
 
 
 class ReceitaIngredienteOut(BaseModel):
@@ -22,7 +22,7 @@ class ReceitaIngredienteOut(BaseModel):
 
 class ReceitaMOEtapaCreate(BaseModel):
     descricao: str
-    tempo_min: float
+    tempo_min: float = Field(ge=0)
     colaborador_id: Optional[int] = None
 
 
@@ -40,17 +40,17 @@ class ReceitaMOEtapaOut(BaseModel):
 
 
 class ReceitaCreate(BaseModel):
-    nome: str
+    nome: str = Field(min_length=1)
     tipo: Optional[str] = None
-    rendimento_g: float
+    rendimento_g: float = Field(gt=0)
     ingredientes: List[ReceitaIngredienteCreate] = []
     etapas_mo: List[ReceitaMOEtapaCreate] = []
 
 
 class ReceitaUpdate(BaseModel):
-    nome: Optional[str] = None
+    nome: Optional[str] = Field(default=None, min_length=1)
     tipo: Optional[str] = None
-    rendimento_g: Optional[float] = None
+    rendimento_g: Optional[float] = Field(default=None, gt=0)
     ingredientes: Optional[List[ReceitaIngredienteCreate]] = None
     etapas_mo: Optional[List[ReceitaMOEtapaCreate]] = None
 
