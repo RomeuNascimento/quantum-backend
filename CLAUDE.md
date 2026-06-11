@@ -162,6 +162,10 @@ Mensagem genérica do `client.js` quando `error.response` é `undefined` (sem re
 > **Migrations:** rodar manualmente do local com todas as env vars:
 > `DATABASE_URL=postgresql+psycopg2://...@72.61.132.202:5432/quantum JWT_SECRET=... alembic upgrade head`
 > O banco externo fica em `72.61.132.202:5432` (porta 5432 exposta no EasyPanel).
+>
+> ⚠️ **PENDENTE: rodar `alembic upgrade head` em produção** — a migration 004
+> (índices + UNIQUE produto_precos com dedupe) foi criada em 2026-06-11 e ainda
+> não foi aplicada no banco de produção.
 
 ### Deploy manual via API
 ```bash
@@ -190,9 +194,9 @@ curl -X POST https://panel.quantumcalc.com.br/api/trpc/services.app.deployServic
 ### 🟡 Médios (Fase 1 — fundação para relatórios)
 
 - [ ] **M1. Float para dinheiro** — `models/models.py`: todas as colunas monetárias são `Float`. Migrar para `Numeric(12,4)` + `Decimal` ANTES de ter histórico de relatórios (depois fica caro).
-- [ ] **M2. N+1 queries generalizadas** — nenhum endpoint usa `selectinload`; `GET /produtos/{id}` dispara 30–80 queries. Faltam índices nas FKs (`ingrediente_precos.ingrediente_id`, `receita_ingredientes.*`, `produto_massas.produto_id`, `produto_precos.produto_id`). Pré-requisito para relatórios/gráficos.
+- [x] **M2. N+1 queries generalizadas** ✅ 2026-06-11 — `query_produto_completo()` (selectinload) em produtos/precificação; listas e detalhe de receita com selectinload; índices na migration 004 — nenhum endpoint usa `selectinload`; `GET /produtos/{id}` dispara 30–80 queries. Faltam índices nas FKs (`ingrediente_precos.ingrediente_id`, `receita_ingredientes.*`, `produto_massas.produto_id`, `produto_precos.produto_id`). Pré-requisito para relatórios/gráficos.
 - [ ] **M3. Ambiguidade de unidades (kg/L vs g/ml)** — custo = `preco/quantidade_embalagem`, consumo = `quantidade_g`; se o usuário cadastra embalagem em kg e usa g na receita, custo sai 1000× errado. Não há conversão nem validação. ⚠️ DECISÃO PENDENTE do usuário: normalizar tudo para g/ml na escrita OU converter por unidade no cálculo (afeta dados existentes em produção).
-- [ ] **M4. Falta UNIQUE em `produto_precos (produto_id, canal_id)`** — race no check-then-insert (`precificacao.py:129-134`) cria preço duplicado por canal. Idem race no register (IntegrityError → 500).
+- [x] **M4. UNIQUE em `produto_precos`** ✅ 2026-06-11 — migration 004 (dedupe + constraint) + UniqueConstraint no model — race no check-then-insert (`precificacao.py:129-134`) cria preço duplicado por canal. Idem race no register (IntegrityError → 500).
 - [ ] **M5. Auth sem proteção** — sem rate limiting em login/register (brute force), register revela e-mails cadastrados, JWT 30min sem refresh token (usuário deslogado a cada 30min).
 - [ ] **M6. `PUT` com `exclude_none=True` impede limpar campos** — padrão em todos os routers: impossível setar `marca`/`tipo`/`preco_final` para null ao editar.
 - [ ] **M7. Importação Excel quebrada por design** — `ia.py:135-138`: `.xlsx` é ZIP binário decodificado como UTF-8 → lixo enviado ao Claude. CSV/TXT funcionam. Fix: `openpyxl` para extrair texto.
