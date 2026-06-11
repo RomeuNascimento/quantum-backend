@@ -3,7 +3,7 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-05-29
+**Última sessão:** 2026-06-11
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -170,6 +170,45 @@ curl -X POST https://panel.quantumcalc.com.br/api/trpc/services.app.deployServic
   -H "Content-Type: application/json" \
   -d '{"json":{"projectName":"quantum","serviceName":"backend"}}'
 ```
+
+---
+
+## Auditoria 2026-06-11 — Revisão completa (backend)
+
+> Revisão de código completa feita em 2026-06-11. Itens abaixo ordenados por prioridade.
+> Roadmap de funcionalidades novas: ver seção "Roadmap de funcionalidades" no CLAUDE.md do **frontend**.
+
+### 🔴 Críticos (Fase 0 — corrigir antes de features novas)
+
+- [ ] **C1. IDOR em Produtos (criar/atualizar)** — `routers/produtos.py:129-136` e `:188-204`: IDs aninhados (`receita_id`, `ingrediente_id`, `embalagem_id`) NÃO são validados contra `user_id`. Usuário autenticado vincula entidades de outro tenant e o GET seguinte vaza nome/quantidades/custos. Fix: validar todo ID aninhado com filtro `user_id == user.id` (helper `get_owned_or_404`).
+- [ ] **C2. IDOR em Receitas (atualizar)** — `routers/receitas.py:174-193`: `PUT /receitas/{id}` recria `ReceitaIngrediente` sem validar ownership do `ingrediente_id` (o POST valida, o PUT não). Idem `colaborador_id` nas `etapas_mo` (create E update).
+- [ ] **C3. IA bloqueante** — `routers/ia.py:110-114, 144`: cliente `anthropic.Anthropic` SÍNCRONO dentro de `async def` → trava o event loop inteiro por 30–90s durante processamento (login e tudo mais param). Fix: `AsyncAnthropic` + `await`, ou trocar endpoint para `def` síncrono (threadpool).
+- [ ] **C4. Upload sem limite + sem rate limiting em /ia/** — `ia.py:107, 132`: `await file.read()` sem limite de tamanho (OOM/DoS) e sem rate limiting — registro de conta é aberto, qualquer um pode queimar créditos Anthropic em loop. Fix: limite ~15MB + rate limit por usuário.
+- [ ] **C5. Exception handler global sem log** — `main.py:32-37`: 500 mudo, sem `logger.exception`. Cegueira operacional total em produção.
+- [ ] **C6. Zero validação numérica nos schemas** — todos os `app/schemas/*.py`: aceita `preco: -10`, `rendimento_g: 0/-500`, `fator_correcao: -1`, margem negativa, etc. Fix: `Field(gt=0)`/`ge=0` em todos os campos numéricos + `senha` com `min_length=8`.
+
+### 🟡 Médios (Fase 1 — fundação para relatórios)
+
+- [ ] **M1. Float para dinheiro** — `models/models.py`: todas as colunas monetárias são `Float`. Migrar para `Numeric(12,4)` + `Decimal` ANTES de ter histórico de relatórios (depois fica caro).
+- [ ] **M2. N+1 queries generalizadas** — nenhum endpoint usa `selectinload`; `GET /produtos/{id}` dispara 30–80 queries. Faltam índices nas FKs (`ingrediente_precos.ingrediente_id`, `receita_ingredientes.*`, `produto_massas.produto_id`, `produto_precos.produto_id`). Pré-requisito para relatórios/gráficos.
+- [ ] **M3. Ambiguidade de unidades (kg/L vs g/ml)** — custo = `preco/quantidade_embalagem`, consumo = `quantidade_g`; se o usuário cadastra embalagem em kg e usa g na receita, custo sai 1000× errado. Não há conversão nem validação. ⚠️ DECISÃO PENDENTE do usuário: normalizar tudo para g/ml na escrita OU converter por unidade no cálculo (afeta dados existentes em produção).
+- [ ] **M4. Falta UNIQUE em `produto_precos (produto_id, canal_id)`** — race no check-then-insert (`precificacao.py:129-134`) cria preço duplicado por canal. Idem race no register (IntegrityError → 500).
+- [ ] **M5. Auth sem proteção** — sem rate limiting em login/register (brute force), register revela e-mails cadastrados, JWT 30min sem refresh token (usuário deslogado a cada 30min).
+- [ ] **M6. `PUT` com `exclude_none=True` impede limpar campos** — padrão em todos os routers: impossível setar `marca`/`tipo`/`preco_final` para null ao editar.
+- [ ] **M7. Importação Excel quebrada por design** — `ia.py:135-138`: `.xlsx` é ZIP binário decodificado como UTF-8 → lixo enviado ao Claude. CSV/TXT funcionam. Fix: `openpyxl` para extrair texto.
+- [ ] **M8. Parsing IA frágil** — `resp.content[0].text` pode lançar IndexError; `max_tokens=2048` trunca JSON em notas longas (30+ itens) → 422 intermitente. JSON da IA não é validado por schema antes de ir ao frontend.
+
+### 🔵 Menores (oportunista)
+
+- `ingredientes.py:23-27`: `preco_mais_recente()` é código morto; `sorted(ing.precos)` espalhado é redundante (relationship já tem `order_by desc`).
+- `auth/utils.py:41-47`: `sub` não-numérico → ValueError não capturado → 500 em vez de 401.
+- `datetime.utcnow()` deprecado + DateTime sem timezone em todo o models.py.
+- 4 implementações duplicadas de "custo unitário pelo preço mais recente" (ingredientes/embalagens/receitas/produtos) com variações `== 0` vs `> 0`.
+- Soft delete inconsistente entre módulos; Dockerfile roda alembic no boot mas deploy real (nixpacks) não usa o Dockerfile.
+- Zero testes automatizados no repo.
+
+### ✅ Pontos fortes confirmados na revisão
+Multi-tenancy disciplinado nas leituras (todos os SELECTs raiz filtram `user_id`), estrutura limpa router/schema/model, custos calculados on-the-fly, `historico-custo` em produtos.py é o código mais maduro (batch loading correto — usar como modelo).
 
 ---
 
