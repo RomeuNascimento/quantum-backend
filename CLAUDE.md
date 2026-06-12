@@ -44,6 +44,11 @@
   - `schemas/ingredientes.py`: `marca: Optional[str] = None` em `IngredienteCreate`, `IngredienteUpdate`, `IngredienteOut`
   - `routers/ingredientes.py`: `marca=dados.marca` passado na criação
   - Migration `003_ingrediente_marca.py` rodada em produção
+- [x] **Matching de ingredientes nota fiscal ↔ catálogo via IA** (2026-06-12, branch `claude/practical-cray-vksesn`)
+  - `ia.py`: os dois endpoints injetam o catálogo de ingredientes ativos do usuário no prompt (`_catalogo_usuario`, máx. 300 itens)
+  - `POST /ia/nota-fiscal`: resposta ganha `ingrediente_id_sugerido` por item (id do catálogo ou null) — IA vincula mesmo insumo de marca diferente, não vincula insumo distinto; `_validar_ids_sugeridos` descarta ids alucinados
+  - `POST /ia/receitas`: prompt instrui a reutilizar os nomes EXATOS do catálogo (evita "açúcar" vs "açúcar refinado" duplicando)
+  - Frontend: revisão da nota ganhou select "Vincular a:" pré-selecionado com a sugestão da IA
 - [x] **Prompt IA nota fiscal normaliza nomes** (2026-05-21)
   - `PROMPT_NOTA` atualizado: extrai `nome` genérico (ex: "Achocolatado") + `marca` separados
   - Antes retornava o código fiscal bruto (ex: "ACHOC. NESTLE S/A 120G")

@@ -5,9 +5,11 @@ import os
 
 import anthropic
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
 from app.auth.utils import get_usuario_atual
-from app.models.models import User
+from app.database import get_db
+from app.models.models import Ingrediente, User
 from app.ratelimit import RateLimiter
 
 router = APIRouter(prefix="/ia", tags=["IA"])
@@ -15,6 +17,9 @@ router = APIRouter(prefix="/ia", tags=["IA"])
 UNIDADES_VALIDAS = {"g", "kg", "ml", "L", "unid"}
 
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
+
+# Limite de itens do catálogo injetado no prompt (controle de tamanho do prompt)
+CATALOGO_MAX_ITENS = 300
 
 # Protege os créditos da API Anthropic
 _ia_limiter = RateLimiter(10, 600, "Limite de importações via IA atingido. Tente novamente em alguns minutos.")
@@ -61,9 +66,33 @@ REGRAS — QUANTIDADE E PREÇO:
 
 Inclua TODOS os itens da nota. Retorne SOMENTE JSON válido, sem markdown:
 
-{"data_compra": "YYYY-MM-DD", "itens": [{"nome": "chocolate meio amargo", "nome_original": "CHOCOLATE MID DKT 200G", "marca": "Harald", "peso_embalagem_g": 200, "quantidade": 2, "unidade": "g", "preco_unitario": 5.99, "preco_total": 11.98}]}
+{"data_compra": "YYYY-MM-DD", "itens": [{"nome": "chocolate meio amargo", "nome_original": "CHOCOLATE MID DKT 200G", "marca": "Harald", "peso_embalagem_g": 200, "quantidade": 2, "unidade": "g", "preco_unitario": 5.99, "preco_total": 11.98, "ingrediente_id_sugerido": null}]}
 
 Use null para data_compra se não visível. Use null para peso_embalagem_g se o peso não constar no nome."""
+
+# Bloco adicionado ao PROMPT_NOTA quando o usuário já tem ingredientes cadastrados
+BLOCO_CATALOGO_NOTA = """
+
+CATÁLOGO DE INGREDIENTES JÁ CADASTRADOS PELO USUÁRIO:
+{catalogo}
+
+REGRAS — VÍNCULO COM O CATÁLOGO (campo "ingrediente_id_sugerido" em cada item):
+- Preencha com o id do ingrediente do catálogo que representa o MESMO insumo, ou null
+- Marca/apresentação diferente = MESMO insumo → vincular (ex: "ACHOC. NESCAU 400G" → id de "achocolatado"; "MANTEIGA POTE MARISA" → id de "manteiga")
+- Insumo realmente diferente → NÃO vincular (ex: "chocolate em barra" ≠ "chocolate em pó"; "açúcar refinado" ≠ "açúcar mascavo")
+- Sem correspondência razoável no catálogo → null
+- Mesmo ao vincular, preencha "nome" normalmente"""
+
+# Bloco adicionado ao PROMPT_RECEITAS quando o usuário já tem ingredientes cadastrados
+BLOCO_CATALOGO_RECEITAS = """
+
+CATÁLOGO DE INGREDIENTES JÁ CADASTRADOS PELO USUÁRIO:
+{catalogo}
+
+REGRA ADICIONAL — REUTILIZAR NOMES DO CATÁLOGO:
+- Se um ingrediente da receita corresponder a um item do catálogo, use EXATAMENTE o nome do catálogo (mesma grafia)
+- Ex: receita diz "açúcar" e o catálogo tem "açúcar refinado" (e o contexto é compatível) → use "açúcar refinado"
+- Só crie um nome novo quando o ingrediente realmente não existir no catálogo"""
 
 PROMPT_RECEITAS = """Você é um extrator de receitas culinárias. Analise o documento e extraia todas as receitas presentes.
 
@@ -90,6 +119,32 @@ REGRAS — RENDIMENTO:
 Retorne SOMENTE JSON válido, sem markdown:
 
 {"receitas": [{"nome": "Bolo de Chocolate", "tipo": "Massa", "rendimento_g": 800, "ingredientes": [{"nome": "farinha de trigo", "quantidade_g": 200, "unidade_original": "2 xícaras"}], "etapas_mo": [{"descricao": "Misture os ingredientes secos", "tempo_min": 5}]}]}"""
+
+
+def _catalogo_usuario(db: Session, user_id: int) -> list[Ingrediente]:
+    """Ingredientes ativos do usuário para injetar como catálogo no prompt."""
+    return (
+        db.query(Ingrediente)
+        .filter(Ingrediente.user_id == user_id, Ingrediente.ativo == True)  # noqa: E712
+        .order_by(Ingrediente.nome)
+        .limit(CATALOGO_MAX_ITENS)
+        .all()
+    )
+
+
+def _formatar_catalogo(ingredientes: list[Ingrediente]) -> str:
+    linhas = []
+    for ing in ingredientes:
+        marca = f" (marca: {ing.marca})" if ing.marca else ""
+        linhas.append(f"- id={ing.id} | {ing.nome}{marca} | unidade: {ing.unidade}")
+    return "\n".join(linhas)
+
+
+def _validar_ids_sugeridos(itens: list[dict], ids_validos: set[int]) -> None:
+    """A IA pode alucinar ids — só repassa sugestões que existem no catálogo do usuário."""
+    for item in itens:
+        sug = item.get("ingrediente_id_sugerido")
+        item["ingrediente_id_sugerido"] = sug if isinstance(sug, int) and sug in ids_validos else None
 
 
 def _client():
@@ -156,15 +211,20 @@ def _image_block(content: bytes, media_type: str) -> dict:
 def processar_nota_fiscal(
     file: UploadFile = File(...),
     user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
 ):
     _checar_rate_limit(user.id)
     content = _ler_upload(file)
     block = _image_block(content, file.content_type or "image/jpeg")
+    catalogo = _catalogo_usuario(db, user.id)
+    prompt = PROMPT_NOTA
+    if catalogo:
+        prompt += BLOCO_CATALOGO_NOTA.format(catalogo=_formatar_catalogo(catalogo))
     try:
         resp = _client().messages.create(
             model=_model(),
             max_tokens=4096,
-            messages=[{"role": "user", "content": [block, {"type": "text", "text": PROMPT_NOTA}]}],
+            messages=[{"role": "user", "content": [block, {"type": "text", "text": prompt}]}],
         )
         data = _parse(resp, "itens")
         # Normalise units
@@ -173,6 +233,7 @@ def processar_nota_fiscal(
                 if isinstance(item, dict):
                     item["unidade"] = "unid"
         data["itens"] = [i for i in data["itens"] if isinstance(i, dict)]
+        _validar_ids_sugeridos(data["itens"], {ing.id for ing in catalogo})
         return data
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
@@ -184,24 +245,30 @@ def processar_nota_fiscal(
 def processar_receitas(
     file: UploadFile = File(...),
     user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
 ):
     _checar_rate_limit(user.id)
     content = _ler_upload(file)
     mt = file.content_type or ""
     nome_arquivo = (file.filename or "").lower()
 
+    catalogo = _catalogo_usuario(db, user.id)
+    prompt_receitas = PROMPT_RECEITAS
+    if catalogo:
+        prompt_receitas += BLOCO_CATALOGO_RECEITAS.format(catalogo=_formatar_catalogo(catalogo))
+
     is_xlsx = "spreadsheet" in mt or "excel" in mt or nome_arquivo.endswith((".xlsx", ".xls"))
     is_text = any(t in mt for t in ("csv", "plain", "text")) or nome_arquivo.endswith((".csv", ".txt"))
     if is_xlsx:
         # .xlsx é ZIP binário — decodificar como UTF-8 mandaria lixo ao Claude
         texto = _extrair_texto_excel(content)
-        messages = [{"role": "user", "content": f"Conteúdo do arquivo:\n\n{texto}\n\n{PROMPT_RECEITAS}"}]
+        messages = [{"role": "user", "content": f"Conteúdo do arquivo:\n\n{texto}\n\n{prompt_receitas}"}]
     elif is_text:
         texto = content.decode("utf-8", errors="replace")
-        messages = [{"role": "user", "content": f"Conteúdo do arquivo:\n\n{texto}\n\n{PROMPT_RECEITAS}"}]
+        messages = [{"role": "user", "content": f"Conteúdo do arquivo:\n\n{texto}\n\n{prompt_receitas}"}]
     else:
         block = _image_block(content, mt or "image/jpeg")
-        messages = [{"role": "user", "content": [block, {"type": "text", "text": PROMPT_RECEITAS}]}]
+        messages = [{"role": "user", "content": [block, {"type": "text", "text": prompt_receitas}]}]
 
     try:
         resp = _client().messages.create(model=_model(), max_tokens=4096, messages=messages)
