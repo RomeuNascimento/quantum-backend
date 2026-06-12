@@ -15,3 +15,6 @@ openpyxl>=3.1.0
 
 # Testes (dev)
 pytest>=8.0.0
+
+# Billing
+stripe>=8.0.0

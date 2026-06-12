@@ -16,6 +16,7 @@ from app.routers.precificacao import router as precificacao_router
 from app.routers.custos_fixos import router as custos_fixos_router
 from app.routers.colaboradores import router as colaboradores_router
 from app.routers.ia import router as ia_router
+from app.routers.billing import router as billing_router
 
 settings = get_settings()
 
@@ -52,6 +53,7 @@ app.include_router(precificacao_router)
 app.include_router(custos_fixos_router)
 app.include_router(colaboradores_router)
 app.include_router(ia_router)
+app.include_router(billing_router)
 
 
 @app.get("/health")
