@@ -3,8 +3,8 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-12 (branch `claude/practical-cray-vksesn` — billing Stripe: setup executado + paywall enforcement + testes)
-**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo); deploy: migration 006 + env vars Stripe
+**Última sessão:** 2026-06-12 (branch `claude/practical-cray-vksesn` — billing Stripe completo + DEPLOY em produção: migrations 004/005/006 aplicadas, backend+frontend no ar)
+**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo); auditar ingredientes kg/L em produção (efeito da migration 005 + fator_unidade)
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -182,13 +182,17 @@ Mensagem genérica do `client.js` quando `error.response` é `undefined` (sem re
 > `DATABASE_URL=postgresql+psycopg2://...@72.61.132.202:5432/quantum JWT_SECRET=... alembic upgrade head`
 > O banco externo fica em `72.61.132.202:5432` (porta 5432 exposta no EasyPanel).
 >
-> ⚠️ **PENDENTE: rodar `alembic upgrade head` em produção** — as migrations 004
-> (índices + UNIQUE produto_precos com dedupe, criada em 2026-06-11), 005
-> (Float → NUMERIC(12,4) nas 21 colunas monetárias/quantitativas, criada em
-> 2026-06-12) e 006 (colunas de billing em users; contas existentes → 'ativa',
-> criada em 2026-06-12) ainda não foram aplicadas no banco de produção.
-> **A 006 é obrigatória antes do deploy deste código** — o paywall lê
-> `user.assinatura_status` em toda requisição autenticada.
+> ✅ **APLICADO em produção 2026-06-12** — `alembic upgrade head` rodado com
+> sucesso (banco saiu de 003 → 006). Migrations 004 (índices + UNIQUE
+> produto_precos), 005 (Float → NUMERIC(12,4)) e 006 (colunas de billing;
+> contas existentes → 'ativa') estão no banco de produção. Backend e frontend
+> deployados na mesma data.
+>
+> ⚠️ **Armadilha encontrada ao rodar:** havia um arquivo de migration órfão
+> `004_user_plano_expira.py` na pasta local (untracked, não estava no git) que
+> causava erro `Multiple head revisions are present`. Removido da pasta local
+> antes do upgrade. Se reaparecer "multiple heads", procure migrations
+> duplicadas com mesmo `down_revision` em `migrations/versions/`.
 
 ### Deploy manual via API
 ```bash
