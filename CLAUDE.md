@@ -3,8 +3,8 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-11 (tarde — branch `claude/keen-ptolemy-mmed2k`, continua a `claude/sharp-noether-6ml8uh`)
-**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo) ou Fase 1 restante (M1/M5–M8)
+**Última sessão:** 2026-06-12 (branch `claude/practical-cray-vksesn` — M1: Float → Numeric(12,4))
+**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo)
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -164,9 +164,10 @@ Mensagem genérica do `client.js` quando `error.response` é `undefined` (sem re
 > `DATABASE_URL=postgresql+psycopg2://...@72.61.132.202:5432/quantum JWT_SECRET=... alembic upgrade head`
 > O banco externo fica em `72.61.132.202:5432` (porta 5432 exposta no EasyPanel).
 >
-> ⚠️ **PENDENTE: rodar `alembic upgrade head` em produção** — a migration 004
-> (índices + UNIQUE produto_precos com dedupe) foi criada em 2026-06-11 e ainda
-> não foi aplicada no banco de produção.
+> ⚠️ **PENDENTE: rodar `alembic upgrade head` em produção** — as migrations 004
+> (índices + UNIQUE produto_precos com dedupe, criada em 2026-06-11) e 005
+> (Float → NUMERIC(12,4) nas 21 colunas monetárias/quantitativas, criada em
+> 2026-06-12) ainda não foram aplicadas no banco de produção.
 
 ### Deploy manual via API
 ```bash
@@ -194,7 +195,7 @@ curl -X POST https://panel.quantumcalc.com.br/api/trpc/services.app.deployServic
 
 ### 🟡 Médios (Fase 1 — fundação para relatórios)
 
-- [ ] **M1. Float para dinheiro** — `models/models.py`: todas as colunas monetárias são `Float`. Migrar para `Numeric(12,4)` + `Decimal` ANTES de ter histórico de relatórios (depois fica caro).
+- [x] **M1. Float para dinheiro** ✅ 2026-06-12 (branch `claude/practical-cray-vksesn`) — 21 colunas monetárias/quantitativas migradas de `Float` → `Numeric(12, 4, asdecimal=False)` (alias `Dinheiro` em models.py) + migration `005_money_float_to_numeric.py`. **Decisão:** `asdecimal=False` — NUMERIC exato no banco, mas o SQLAlchemy devolve `float` no Python, mantendo intactos todos os cálculos dos routers e os schemas Pydantic (evita TypeError de `Decimal × float`).
 - [x] **M2. N+1 queries generalizadas** ✅ 2026-06-11 — `query_produto_completo()` (selectinload) em produtos/precificação; listas e detalhe de receita com selectinload; índices na migration 004 — nenhum endpoint usa `selectinload`; `GET /produtos/{id}` dispara 30–80 queries. Faltam índices nas FKs (`ingrediente_precos.ingrediente_id`, `receita_ingredientes.*`, `produto_massas.produto_id`, `produto_precos.produto_id`). Pré-requisito para relatórios/gráficos.
 - [x] **M3. Ambiguidade de unidades** ✅ 2026-06-11 — DECISÃO: converter no cálculo. `app/routers/unidades.py:fator_unidade()` (kg/L → ×1000) aplicado em custo_unitario_ingrediente, calcular_custo_unitario e historico_custo. ⚠️ AUDITAR após deploy: ingredientes com unidade kg/L cujo quantidade_embalagem já estava em gramas (workaround antigo) terão custo ÷1000 — conferir os cadastros kg/L existentes — custo = `preco/quantidade_embalagem`, consumo = `quantidade_g`; se o usuário cadastra embalagem em kg e usa g na receita, custo sai 1000× errado. Não há conversão nem validação. ⚠️ DECISÃO PENDENTE do usuário: normalizar tudo para g/ml na escrita OU converter por unidade no cálculo (afeta dados existentes em produção).
 - [x] **M4. UNIQUE em `produto_precos`** ✅ 2026-06-11 — migration 004 (dedupe + constraint) + UniqueConstraint no model — race no check-then-insert (`precificacao.py:129-134`) cria preço duplicado por canal. Idem race no register (IntegrityError → 500).
@@ -274,7 +275,7 @@ Multi-tenancy disciplinado nas leituras (todos os SELECTs raiz filtram `user_id`
 - Smoke test completo (sqlite + TestClient): register → ingrediente+preço → embalagem+preço → receita → produto → precificação → relatorio-margem ✓ (matemática conferida)
 
 **Fase 1 restante (antes de Fase 2):**
-- M1: Migrar colunas monetárias de `Float` → `Numeric(12,4)` (pré-requisito para relatórios precisos)
+- [x] M1: ✅ 2026-06-12 (branch `claude/practical-cray-vksesn`) — `Float` → `Numeric(12, 4, asdecimal=False)` em todas as 21 colunas monetárias/quantitativas + migration 005. ⚠️ Requer `alembic upgrade head` em produção (junto da 004 pendente).
 - M5: Rate limiting em login/register (brute force)
 - M6: `PUT` com `exclude_unset=True` em vez de `exclude_none=True` (permite limpar campos opcionais)
 - M7: Importação Excel — usar `openpyxl` para `.xlsx` (hoje envia lixo binário ao Claude)

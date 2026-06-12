@@ -1,11 +1,17 @@
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, DateTime,
+    Column, Integer, String, Numeric, Boolean, DateTime,
     ForeignKey, Enum, Text, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
 import enum
+
+# M1 (auditoria 2026-06-11): colunas monetárias/quantitativas usam NUMERIC(12,4)
+# no banco (precisão exata, sem erro de ponto flutuante no armazenamento), mas
+# `asdecimal=False` faz o SQLAlchemy devolver float no Python — evita TypeError
+# de Decimal × float nos cálculos dos routers e mantém os schemas Pydantic (float).
+Dinheiro = Numeric(12, 4, asdecimal=False)
 
 
 class UnidadeEnum(str, enum.Enum):
@@ -53,7 +59,7 @@ class Configuracao(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    valor_hora_padrao = Column(Float, default=0.0)
+    valor_hora_padrao = Column(Dinheiro, default=0.0)
     criado_em = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="configuracao")
@@ -65,7 +71,7 @@ class Colaborador(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     nome = Column(String(120), nullable=False)
-    valor_hora = Column(Float, nullable=False)
+    valor_hora = Column(Dinheiro, nullable=False)
     ativo = Column(Boolean, default=True)
 
     user = relationship("User", back_populates="colaboradores")
@@ -81,7 +87,7 @@ class Ingrediente(Base):
     nome = Column(String(150), nullable=False)
     marca = Column(String(100), nullable=True)
     unidade = Column(Enum(UnidadeEnum), nullable=False)
-    fator_correcao = Column(Float, default=1.0)
+    fator_correcao = Column(Dinheiro, default=1.0)
     ativo = Column(Boolean, default=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
 
@@ -96,8 +102,8 @@ class IngredientePreco(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     ingrediente_id = Column(Integer, ForeignKey("ingredientes.id"), nullable=False)
-    preco = Column(Float, nullable=False)
-    quantidade_embalagem = Column(Float, nullable=False)
+    preco = Column(Dinheiro, nullable=False)
+    quantidade_embalagem = Column(Dinheiro, nullable=False)
     data_compra = Column(DateTime, nullable=False)
     origem = Column(Enum(OrigemEnum), default=OrigemEnum.manual)
     observacao = Column(Text, nullable=True)
@@ -129,8 +135,8 @@ class EmbalagemPreco(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     embalagem_id = Column(Integer, ForeignKey("embalagens.id"), nullable=False)
-    preco = Column(Float, nullable=False)
-    quantidade_embalagem = Column(Float, nullable=False)
+    preco = Column(Dinheiro, nullable=False)
+    quantidade_embalagem = Column(Dinheiro, nullable=False)
     data_compra = Column(DateTime, nullable=False)
     origem = Column(Enum(OrigemEnum), default=OrigemEnum.manual)
     observacao = Column(Text, nullable=True)
@@ -148,7 +154,7 @@ class Receita(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     nome = Column(String(150), nullable=False)
     tipo = Column(String(100), nullable=True)
-    rendimento_g = Column(Float, nullable=False)
+    rendimento_g = Column(Dinheiro, nullable=False)
     ativo = Column(Boolean, default=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
 
@@ -165,7 +171,7 @@ class ReceitaIngrediente(Base):
     id = Column(Integer, primary_key=True, index=True)
     receita_id = Column(Integer, ForeignKey("receitas.id"), nullable=False)
     ingrediente_id = Column(Integer, ForeignKey("ingredientes.id"), nullable=False)
-    quantidade_g = Column(Float, nullable=False)
+    quantidade_g = Column(Dinheiro, nullable=False)
 
     receita = relationship("Receita", back_populates="ingredientes")
     ingrediente = relationship("Ingrediente")
@@ -177,7 +183,7 @@ class ReceitaMOEtapa(Base):
     id = Column(Integer, primary_key=True, index=True)
     receita_id = Column(Integer, ForeignKey("receitas.id"), nullable=False)
     descricao = Column(String(200), nullable=False)
-    tempo_min = Column(Float, nullable=False)
+    tempo_min = Column(Dinheiro, nullable=False)
     colaborador_id = Column(Integer, ForeignKey("colaboradores.id"), nullable=True)
 
     receita = relationship("Receita", back_populates="etapas_mo")
@@ -210,7 +216,7 @@ class ProdutoMassa(Base):
     id = Column(Integer, primary_key=True, index=True)
     produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
     receita_id = Column(Integer, ForeignKey("receitas.id"), nullable=False)
-    quantidade_g = Column(Float, nullable=False)
+    quantidade_g = Column(Dinheiro, nullable=False)
 
     produto = relationship("Produto", back_populates="massas")
     receita = relationship("Receita")
@@ -222,7 +228,7 @@ class ProdutoRecheio(Base):
     id = Column(Integer, primary_key=True, index=True)
     produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
     receita_id = Column(Integer, ForeignKey("receitas.id"), nullable=False)
-    quantidade_g = Column(Float, nullable=False)
+    quantidade_g = Column(Dinheiro, nullable=False)
 
     produto = relationship("Produto", back_populates="recheios")
     receita = relationship("Receita")
@@ -234,7 +240,7 @@ class ProdutoIngrediente(Base):
     id = Column(Integer, primary_key=True, index=True)
     produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
     ingrediente_id = Column(Integer, ForeignKey("ingredientes.id"), nullable=False)
-    quantidade_g = Column(Float, nullable=False)
+    quantidade_g = Column(Dinheiro, nullable=False)
 
     produto = relationship("Produto", back_populates="ingredientes")
     ingrediente = relationship("Ingrediente")
@@ -246,7 +252,7 @@ class ProdutoEmbalagem(Base):
     id = Column(Integer, primary_key=True, index=True)
     produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
     embalagem_id = Column(Integer, ForeignKey("embalagens.id"), nullable=False)
-    quantidade = Column(Float, nullable=False)
+    quantidade = Column(Dinheiro, nullable=False)
 
     produto = relationship("Produto", back_populates="embalagens")
     embalagem = relationship("Embalagem")
@@ -258,7 +264,7 @@ class ProdutoMOMontagem(Base):
     id = Column(Integer, primary_key=True, index=True)
     produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
     descricao = Column(String(200), nullable=False)
-    tempo_min = Column(Float, nullable=False)
+    tempo_min = Column(Dinheiro, nullable=False)
     colaborador_id = Column(Integer, ForeignKey("colaboradores.id"), nullable=True)
 
     produto = relationship("Produto", back_populates="mo_montagem")
@@ -273,9 +279,9 @@ class Canal(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     nome = Column(String(100), nullable=False)
-    taxa_plataforma_pct = Column(Float, default=0.0)
-    taxa_cartao_pct = Column(Float, default=0.0)
-    imposto_pct = Column(Float, default=0.0)
+    taxa_plataforma_pct = Column(Dinheiro, default=0.0)
+    taxa_cartao_pct = Column(Dinheiro, default=0.0)
+    imposto_pct = Column(Dinheiro, default=0.0)
     ativo = Column(Boolean, default=True)
 
     user = relationship("User", back_populates="canais")
@@ -291,8 +297,8 @@ class ProdutoPreco(Base):
     id = Column(Integer, primary_key=True, index=True)
     produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
     canal_id = Column(Integer, ForeignKey("canais.id"), nullable=False)
-    margem_pct = Column(Float, nullable=False)
-    preco_final = Column(Float, nullable=True)
+    margem_pct = Column(Dinheiro, nullable=False)
+    preco_final = Column(Dinheiro, nullable=True)
 
     produto = relationship("Produto", back_populates="precos")
     canal = relationship("Canal", back_populates="precos")
@@ -306,7 +312,7 @@ class CustoFixo(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     nome = Column(String(150), nullable=False)
-    valor = Column(Float, nullable=False)
+    valor = Column(Dinheiro, nullable=False)
     periodo = Column(Enum(PeriodoEnum), nullable=False)
     criado_em = Column(DateTime, default=datetime.utcnow)
 
