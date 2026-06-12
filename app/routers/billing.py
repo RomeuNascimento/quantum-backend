@@ -155,3 +155,13 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         # payment_failed: não derruba na hora — a validade (com carência) expira sozinha
 
     return {"received": True}
+
+
+def require_assinatura_ativa(user: User = Depends(get_usuario_atual)) -> User:
+    """Dependency: bloqueia rotas de negócio se a assinatura estiver vencida."""
+    if status_efetivo(user) == "vencida":
+        raise HTTPException(
+            status_code=402,
+            detail="Assinatura vencida. Acesse /assinatura para renovar.",
+        )
+    return user

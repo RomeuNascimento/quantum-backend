@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -16,7 +16,7 @@ from app.routers.precificacao import router as precificacao_router
 from app.routers.custos_fixos import router as custos_fixos_router
 from app.routers.colaboradores import router as colaboradores_router
 from app.routers.ia import router as ia_router
-from app.routers.billing import router as billing_router
+from app.routers.billing import router as billing_router, require_assinatura_ativa
 
 settings = get_settings()
 
@@ -44,15 +44,17 @@ async def generic_exception_handler(request: Request, exc: Exception):
     )
 
 
+_paywall = [Depends(require_assinatura_ativa)]
+
 app.include_router(auth_router)
-app.include_router(ingredientes_router)
-app.include_router(embalagens_router)
-app.include_router(receitas_router)
-app.include_router(produtos_router)
-app.include_router(precificacao_router)
-app.include_router(custos_fixos_router)
-app.include_router(colaboradores_router)
-app.include_router(ia_router)
+app.include_router(ingredientes_router, dependencies=_paywall)
+app.include_router(embalagens_router, dependencies=_paywall)
+app.include_router(receitas_router, dependencies=_paywall)
+app.include_router(produtos_router, dependencies=_paywall)
+app.include_router(precificacao_router, dependencies=_paywall)
+app.include_router(custos_fixos_router, dependencies=_paywall)
+app.include_router(colaboradores_router, dependencies=_paywall)
+app.include_router(ia_router, dependencies=_paywall)
 app.include_router(billing_router)
 
 
