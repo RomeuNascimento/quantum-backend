@@ -18,7 +18,7 @@ from app.schemas.produtos import (
 )
 from app.routers.receitas import calcular_receita, get_valor_hora_padrao, custo_unitario_ingrediente
 from app.routers.ownership import validar_ids_do_usuario
-from app.routers.unidades import fator_unidade
+from app.routers.custos import custo_unitario_de_preco, custo_unitario_embalagem_de_preco, preco_mais_recente
 
 router = APIRouter(prefix="/produtos", tags=["Produtos"])
 
@@ -53,11 +53,7 @@ def query_produto_completo(db: Session):
 
 
 def custo_unitario_embalagem(embalagem: Embalagem) -> float:
-    precos = sorted(embalagem.precos, key=lambda p: p.data_compra, reverse=True)
-    if not precos:
-        return 0.0
-    p = precos[0]
-    return p.preco / p.quantidade_embalagem if p.quantidade_embalagem > 0 else 0.0
+    return custo_unitario_embalagem_de_preco(preco_mais_recente(embalagem.precos))
 
 
 def calcular_produto(produto: Produto, valor_hora_padrao: float) -> dict:
@@ -334,10 +330,7 @@ def historico_custo(
             for ri in receita.ingredientes:
                 ing = ri.ingrediente
                 p = price_at(ing_prices.get(ri.ingrediente_id, []), d)
-                if p and p.quantidade_embalagem > 0:
-                    base = p.quantidade_embalagem * fator_unidade(ing.unidade)
-                    fc = ing.fator_correcao if ing.fator_correcao and ing.fator_correcao > 0 else 1.0
-                    custo_mp_rec += (p.preco / base / fc) * ri.quantidade_g
+                custo_mp_rec += custo_unitario_de_preco(p, ing.unidade, ing.fator_correcao) * ri.quantidade_g
             custo_mo_rec = sum(
                 ((et.colaborador.valor_hora if et.colaborador_id and et.colaborador else vh) / 60) * et.tempo_min
                 for et in receita.etapas_mo
@@ -347,16 +340,12 @@ def historico_custo(
         # Ingredientes avulsos
         for ing, qtd in ing_avulso_entries:
             p = price_at(ing_prices.get(ing.id, []), d)
-            if p and p.quantidade_embalagem > 0:
-                base = p.quantidade_embalagem * fator_unidade(ing.unidade)
-                fc = ing.fator_correcao if ing.fator_correcao and ing.fator_correcao > 0 else 1.0
-                custo += (p.preco / base / fc) * qtd
+            custo += custo_unitario_de_preco(p, ing.unidade, ing.fator_correcao) * qtd
 
         # Embalagens
         for emb, qtd in emb_entries:
             p = price_at(emb_prices.get(emb.id, []), d)
-            if p and p.quantidade_embalagem > 0:
-                custo += (p.preco / p.quantidade_embalagem) * qtd
+            custo += custo_unitario_embalagem_de_preco(p) * qtd
 
         custo += mo_montagem_custo
         pontos_raw.append(HistoricoPonto(data=d.isoformat(), custo=round(custo, 4)))

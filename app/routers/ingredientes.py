@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import desc
 from typing import List
 from datetime import datetime
-from app.routers.unidades import fator_unidade
+from app.routers.custos import custo_unitario_de_preco
 from app.database import get_db
 from app.auth.utils import get_usuario_atual
 from app.models.models import User, Ingrediente, IngredientePreco, ReceitaIngrediente, ProdutoIngrediente
@@ -16,17 +16,7 @@ router = APIRouter(prefix="/ingredientes", tags=["Ingredientes"])
 
 
 def calcular_custo_unitario(preco: IngredientePreco, fator_correcao: float, unidade=None) -> float:
-    if preco is None or preco.quantidade_embalagem == 0:
-        return 0.0
-    base = preco.quantidade_embalagem * fator_unidade(unidade)
-    return (preco.preco / base) / (fator_correcao if fator_correcao > 0 else 1.0)
-
-
-def preco_mais_recente(ingrediente: Ingrediente) -> IngredientePreco | None:
-    return (
-        db_preco
-        for db_preco in sorted(ingrediente.precos, key=lambda p: p.data_compra, reverse=True)
-    ).__next__() if ingrediente.precos else None
+    return custo_unitario_de_preco(preco, unidade, fator_correcao)
 
 
 @router.get("/", response_model=List[IngredienteOut])

@@ -211,12 +211,12 @@ curl -X POST https://panel.quantumcalc.com.br/api/trpc/services.app.deployServic
 
 ### 🔵 Menores (oportunista)
 
-- `ingredientes.py:23-27`: `preco_mais_recente()` é código morto; `sorted(ing.precos)` espalhado é redundante (relationship já tem `order_by desc`).
+- [x] `preco_mais_recente()` código morto removido ✅ 2026-06-12
 - `auth/utils.py:41-47`: `sub` não-numérico → ValueError não capturado → 500 em vez de 401.
 - `datetime.utcnow()` deprecado + DateTime sem timezone em todo o models.py.
-- 4 implementações duplicadas de "custo unitário pelo preço mais recente" (ingredientes/embalagens/receitas/produtos) com variações `== 0` vs `> 0`.
+- [x] 4 implementações duplicadas de custo unitário → **`app/routers/custos.py`** ✅ 2026-06-12 (`custo_unitario_de_preco`, `custo_unitario_embalagem_de_preco`, `preco_mais_recente`) — usadas por ingredientes/embalagens/receitas/produtos (inclusive `historico_custo`)
 - Soft delete inconsistente entre módulos; Dockerfile roda alembic no boot mas deploy real (nixpacks) não usa o Dockerfile.
-- Zero testes automatizados no repo.
+- [x] Zero testes → **`tests/test_smoke.py`** ✅ 2026-06-12 (sqlite in-memory + TestClient): fluxo completo register→ingrediente→embalagem→receita→produto→precificação iFood→relatório-margem com matemática conferida + anti-enumeração de e-mail + histórico de custo. Rodar: `DATABASE_URL=sqlite:// JWT_SECRET=test python -m pytest tests/ -q`
 
 ### ✅ Pontos fortes confirmados na revisão
 Multi-tenancy disciplinado nas leituras (todos os SELECTs raiz filtram `user_id`), estrutura limpa router/schema/model, custos calculados on-the-fly, `historico-custo` em produtos.py é o código mais maduro (batch loading correto — usar como modelo).
@@ -271,8 +271,9 @@ Multi-tenancy disciplinado nas leituras (todos os SELECTs raiz filtram `user_id`
 
 **Fase 2 — Features de relatório (prioridade):**
 1. [x] **Endpoint `GET /precificacao/relatorio-margem`** ✅ 2026-06-11 (branch `claude/keen-ptolemy-mmed2k`) — agrega por produto ativo todos os canais ativos: `margem_real_pct = (1 − taxas − custo/preço_praticado) × 100`, `preco_praticado = preco_final ou preco_sugerido`, `lucro_unitario`. Em `precificacao.py` (não `/produtos/...`) para evitar import circular de `calcular_preco_sugerido` e colisão com rota `/produtos/{id}`.
-2. [ ] Extrair lógica de cálculo de custo como função reutilizável (hoje duplicada entre `calcular_produto` e `historico_custo`)
-3. [ ] Endpoint de snapshot de custo por produto para série temporal (base para gráficos de evolução)
+2. [x] Extrair lógica de cálculo de custo como função reutilizável ✅ 2026-06-12 — `app/routers/custos.py` unifica a fórmula preço→custo unitário usada nos 4 módulos (a duplicação real); `calcular_produto` (estado atual) e `historico_custo` (por data) mantêm percursos próprios por natureza, mas agora compartilham a fórmula
+3. [ ] Endpoint de snapshot de custo por produto para série temporal — **avaliar se ainda é necessário**: `GET /produtos/{id}/historico-custo` já reconstrói a série inteira a partir do histórico de preços (e alimenta o gráfico do frontend); snapshot persistido só se a performance degradar
+- M5 restante: register não revela mais e-mails ✅ 2026-06-12 (mensagem vaga anti-enumeração); falta apenas refresh token (JWT 30min) — requer mudança coordenada com o frontend
 
 **Fixes críticos descobertos em teste funcional (2026-06-11, mesma branch):**
 - `POST /ingredientes/{id}/precos` e `POST /embalagens/{id}/precos` retornavam **500 sempre**: `custo_unitario` obrigatório sem default no schema Out, validado antes de ser setado → default `0.0` adicionado

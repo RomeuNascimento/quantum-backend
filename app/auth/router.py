@@ -17,11 +17,16 @@ def _ip(request: Request) -> str:
     return request.client.host if request.client else "desconhecido"
 
 
+# Mensagem deliberadamente vaga: não confirma que o e-mail existe na base
+# (anti-enumeração). O rate limit por IP impede varredura mesmo assim.
+_MSG_REGISTRO_INDISPONIVEL = "Não foi possível criar a conta com estes dados. Verifique o e-mail ou faça login."
+
+
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 def registrar(dados: UserCreate, request: Request, db: Session = Depends(get_db)):
     _register_limiter.checar(_ip(request))
     if db.query(User).filter(User.email == dados.email).first():
-        raise HTTPException(status_code=400, detail="E-mail já cadastrado")
+        raise HTTPException(status_code=400, detail=_MSG_REGISTRO_INDISPONIVEL)
 
     user = User(
         nome=dados.nome,
@@ -50,7 +55,7 @@ def registrar(dados: UserCreate, request: Request, db: Session = Depends(get_db)
     except IntegrityError:
         # Race no check-then-insert: dois registers simultâneos do mesmo e-mail
         db.rollback()
-        raise HTTPException(status_code=400, detail="E-mail já cadastrado")
+        raise HTTPException(status_code=400, detail=_MSG_REGISTRO_INDISPONIVEL)
     db.refresh(user)
 
     token = criar_token({"sub": str(user.id)})

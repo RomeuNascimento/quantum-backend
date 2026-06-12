@@ -8,14 +8,13 @@ from app.schemas.embalagens import (
     EmbalagemCreate, EmbalagemUpdate, EmbalagemOut,
     EmbalagemDetalhe, EmbalagemPrecoCreate, EmbalagemPrecoOut
 )
+from app.routers.custos import custo_unitario_embalagem_de_preco
 
 router = APIRouter(prefix="/embalagens", tags=["Embalagens"])
 
 
 def calcular_custo_unitario(preco: EmbalagemPreco) -> float:
-    if preco is None or preco.quantidade_embalagem == 0:
-        return 0.0
-    return preco.preco / preco.quantidade_embalagem
+    return custo_unitario_embalagem_de_preco(preco)
 
 
 @router.get("/", response_model=List[EmbalagemOut])
