@@ -3,8 +3,8 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-12 (branch `claude/practical-cray-vksesn` — M1: Float → Numeric(12,4))
-**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo)
+**Última sessão:** 2026-06-12 (branch `claude/practical-cray-vksesn` — billing Stripe: setup executado + paywall enforcement + testes)
+**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo); deploy: migration 006 + env vars Stripe
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -49,6 +49,13 @@
   - `POST /ia/nota-fiscal`: resposta ganha `ingrediente_id_sugerido` por item (id do catálogo ou null) — IA vincula mesmo insumo de marca diferente, não vincula insumo distinto; `_validar_ids_sugeridos` descarta ids alucinados
   - `POST /ia/receitas`: prompt instrui a reutilizar os nomes EXATOS do catálogo (evita "açúcar" vs "açúcar refinado" duplicando)
   - Frontend: revisão da nota ganhou select "Vincular a:" pré-selecionado com a sugestão da IA
+- [x] **Billing — assinatura anual via Stripe** (2026-06-12, branch `claude/practical-cray-vksesn`)
+  - `app/routers/billing.py`: `GET /billing/status`, `POST /billing/checkout`, `POST /billing/portal`, `POST /billing/webhook` (assinatura verificada via `STRIPE_WEBHOOK_SECRET`)
+  - Modelo: trial de 7 dias para contas novas; contas pré-existentes ficaram `ativa` sem validade (migration 006); validade = fim do período pago + 3 dias de carência
+  - **Setup Stripe executado em 2026-06-12** (live): produto "Quantum — Plano Anual", `STRIPE_PRICE_ID=price_1ThTKO5aXvvE532vI8CgfUte`, webhook `https://api.quantumcalc.com.br/billing/webhook` — secret configurado no EasyPanel
+  - **Paywall enforcement:** `require_assinatura_ativa` (HTTP 402 se `status_efetivo == 'vencida'`) aplicado a todos os routers de negócio em `main.py`; `auth` e `billing` ficam livres (usuário vencido precisa conseguir pagar)
+  - `tests/test_billing.py`: 11 testes (status_efetivo puro + endpoint + paywall 402/liberação); infra de teste extraída para `tests/db.py` + `tests/conftest.py` (engine único — dois módulos com engine próprio conflitavam)
+  - Frontend correspondente: página `/assinatura`, banners no Dashboard, `PaywallGate` no PrivateRoute, 402 → redirect em `client.js`
 - [x] **Prompt IA nota fiscal normaliza nomes** (2026-05-21)
   - `PROMPT_NOTA` atualizado: extrai `nome` genérico (ex: "Achocolatado") + `marca` separados
   - Antes retornava o código fiscal bruto (ex: "ACHOC. NESTLE S/A 120G")
@@ -79,6 +86,12 @@ ALLOW_ORIGINS=https://quantumcalc.com.br
 # IA (obrigatório para /ia/* endpoints)
 ANTHROPIC_API_KEY=<configurada no EasyPanel — ativa>
 ANTHROPIC_MODEL=claude-opus-4-5   # opcional, este é o padrão
+
+# Billing (obrigatório para /billing/* — sem elas os endpoints retornam 503)
+STRIPE_API_KEY=<chave restrita rk_live_... — ver no EasyPanel>
+STRIPE_PRICE_ID=price_1ThTKO5aXvvE532vI8CgfUte
+STRIPE_WEBHOOK_SECRET=<whsec_... — ver no EasyPanel>
+FRONTEND_URL=https://quantumcalc.com.br   # opcional, este é o padrão
 
 # Banco externo (para rodar alembic do local):
 # postgresql://postgres:<SENHA>@72.61.132.202:5432/quantum
@@ -170,9 +183,12 @@ Mensagem genérica do `client.js` quando `error.response` é `undefined` (sem re
 > O banco externo fica em `72.61.132.202:5432` (porta 5432 exposta no EasyPanel).
 >
 > ⚠️ **PENDENTE: rodar `alembic upgrade head` em produção** — as migrations 004
-> (índices + UNIQUE produto_precos com dedupe, criada em 2026-06-11) e 005
+> (índices + UNIQUE produto_precos com dedupe, criada em 2026-06-11), 005
 > (Float → NUMERIC(12,4) nas 21 colunas monetárias/quantitativas, criada em
-> 2026-06-12) ainda não foram aplicadas no banco de produção.
+> 2026-06-12) e 006 (colunas de billing em users; contas existentes → 'ativa',
+> criada em 2026-06-12) ainda não foram aplicadas no banco de produção.
+> **A 006 é obrigatória antes do deploy deste código** — o paywall lê
+> `user.assinatura_status` em toda requisição autenticada.
 
 ### Deploy manual via API
 ```bash
