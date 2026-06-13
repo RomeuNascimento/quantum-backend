@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     jwt_expiration: int = 30
     allow_origins: str = "https://quantumcalc.com.br"
     enable_docs: bool = False  # Swagger/ReDoc/OpenAPI expostos só se True (default: off em produção)
+    # Rate limit distribuído: se vazio, usa memória (só vale com 1 worker).
+    redis_url: str = ""
 
     class Config:
         env_file = ".env"

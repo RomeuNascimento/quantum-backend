@@ -13,8 +13,12 @@ python-dotenv==1.0.1
 anthropic>=0.40.0
 openpyxl>=3.1.0
 
+# Rate limit distribuído (opcional — ativado por REDIS_URL)
+redis>=5.0.0
+
 # Testes (dev)
 pytest>=8.0.0
+fakeredis>=2.20.0
 
 # Billing
 stripe>=8.0.0

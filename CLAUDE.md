@@ -3,8 +3,8 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-13 (branch `claude/keen-goldberg-m8aqqx` — segurança esforço médio: `/docs` off por padrão · validação de soma de taxas do canal < 100% · revogação de JWT (jti/denylist + token_version) — ⚠️ requer `alembic upgrade head` migration 008)
-**Próxima sessão:** segurança esforço médio restante (Redis rate limiter); rateio de custos fixos; alertas proativos de margem/preço; auditar ingredientes kg/L em produção
+**Última sessão:** 2026-06-13 (branch `claude/keen-goldberg-m8aqqx` — segurança esforço médio COMPLETA: `/docs` off por padrão · validação de soma de taxas do canal < 100% · revogação de JWT (jti/denylist + token_version) · rate limiter com backend Redis opcional — ⚠️ requer `alembic upgrade head` migration 008)
+**Próxima sessão:** rateio de custos fixos; alertas proativos de margem/preço; auditar ingredientes kg/L em produção; refresh token (JWT 30min — mudança coordenada com frontend); conferir X-Forwarded-For em produção
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -43,12 +43,27 @@
   validados em sqlite isolado.
 - Frontend: `authStore.logout()` chama `/auth/logout` (best-effort, sem recursão de 401).
 
+**Rate limiter com backend Redis opcional (sem migration):**
+- `app/ratelimit.py`: `RateLimiter` agora usa Redis (sorted set, janela deslizante
+  por chave) quando `REDIS_URL` está setada — consistente entre múltiplos
+  workers/réplicas. Sem `REDIS_URL`, cai no dict em memória (comportamento atual).
+- `get_redis()` é lazy singleton: sem URL → None (memória); URL setada mas Redis
+  fora do ar no boot → loga aviso e degrada p/ memória (fail-open). Se o Redis cair
+  em runtime, a chamada faz fallback p/ memória em vez de derrubar a request.
+- Rejeição faz `zrem` do próprio membro (paridade com memória: tentativa rejeitada
+  não estende a punição além da janela).
+- `tests/test_ratelimit.py` (5 testes, via fakeredis): bloqueio, isolamento por
+  chave, não-extensão da punição, fallback memória, fallback em runtime.
+- ⚠️ **Só com `REDIS_URL` setada o `--workers N` > 1 (ou réplicas) é seguro.**
+  Sem ela, o startCommand DEVE continuar com 1 worker.
+
 **Infra de teste:** `conftest.py` ganhou fixture autouse que zera os rate limiters
 em memória por módulo (estado vazava entre módulos e disparava 429 espúrio).
 
 **Pendências de deploy (usuário):** `alembic upgrade head` (migration 008) + disparar
 deploy do backend no EasyPanel; se quiser manter o Swagger acessível em produção, setar
-`ENABLE_DOCS=true` antes.
+`ENABLE_DOCS=true` antes. Para escalar workers, provisionar Redis e setar `REDIS_URL`
+(opcional — sem ela tudo segue funcionando com 1 worker).
 
 ---
 
@@ -94,7 +109,7 @@ deploy do backend no EasyPanel; se quiser manter o Swagger acessível em produç
 - **RateLimiter** — expurgo de chaves antigas (dict crescia sem limite)
 
 **Pendências da auditoria (esforço médio):**
-- Rate limiter em Redis — o atual é em memória; vira teatro com `--workers N` ou réplicas. Enquanto isso o startCommand DEVE manter 1 worker
+- [x] Rate limiter em Redis ✅ 2026-06-13 (parte 3) — backend Redis opcional via `REDIS_URL` (sorted set), fallback em memória; só com Redis o `--workers N` > 1 é seguro
 - [x] `jti` + denylist de JWT ✅ 2026-06-13 (parte 3) — token_version (logout-all / troca de senha) + denylist por jti (logout); migration 008
 - [x] Proteger/desabilitar `/docs` (Swagger) em produção ✅ 2026-06-13 (parte 3) — `enable_docs` off por padrão
 - [x] Validar soma de taxas do canal < 100% ✅ 2026-06-13 (parte 3) — 422/400 + guard de margem+taxas
@@ -270,6 +285,9 @@ Mensagem genérica do `client.js` quando `error.response` é `undefined` (sem re
 - **Build type:** nixpacks
 - **buildCommand:** `pip install -r requirements.txt`
 - **startCommand:** `uvicorn app.main:app --host 0.0.0.0 --port 8000`
+  - ⚠️ **1 worker** enquanto não houver `REDIS_URL` (rate limit em memória não é
+    compartilhado entre processos). Com Redis provisionado + `REDIS_URL` setada,
+    pode-se usar `--workers N`.
 - **Domínio:** `api.quantumcalc.com.br` porta 8000, HTTPS true
 - **autoDeploy:** false (deploy manual via painel ou API)
 
