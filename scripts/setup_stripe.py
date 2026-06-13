@@ -17,6 +17,7 @@ stripe.api_key = os.environ["STRIPE_API_KEY"]
 
 PRODUTO_NOME = "Quantum — Plano Anual"
 VALOR_CENTAVOS = 14700  # R$ 147,00
+VALOR_MENSAL_CENTAVOS = 1990  # R$ 19,90/mês (anual sai ~38% mais barato)
 WEBHOOK_URL = "https://api.quantumcalc.com.br/billing/webhook"
 WEBHOOK_EVENTOS = [
     "checkout.session.completed",
@@ -51,6 +52,21 @@ def main() -> None:
     else:
         print(f"Preço existente: {preco.id}")
 
+    # Preço mensal R$19,90 (mesmo produto)
+    preco_mensal = next((pr for pr in stripe.Price.list(product=produto.id, active=True, limit=100)
+                         if pr.unit_amount == VALOR_MENSAL_CENTAVOS and pr.currency == "brl"
+                         and pr.recurring and pr.recurring.interval == "month"), None)
+    if preco_mensal is None:
+        preco_mensal = stripe.Price.create(
+            product=produto.id,
+            unit_amount=VALOR_MENSAL_CENTAVOS,
+            currency="brl",
+            recurring={"interval": "month"},
+        )
+        print(f"Preço mensal criado: {preco_mensal.id}")
+    else:
+        print(f"Preço mensal existente: {preco_mensal.id}")
+
     # Webhook
     wh = next((w for w in stripe.WebhookEndpoint.list(limit=100).auto_paging_iter()
                if w.url == WEBHOOK_URL), None)
@@ -64,6 +80,7 @@ def main() -> None:
     print(f"\nConfigurar no EasyPanel (serviço backend):")
     print(f"STRIPE_API_KEY=<a chave rk_live usada agora>")
     print(f"STRIPE_PRICE_ID={preco.id}")
+    print(f"STRIPE_PRICE_ID_MENSAL={preco_mensal.id}")
 
 
 if __name__ == "__main__":
