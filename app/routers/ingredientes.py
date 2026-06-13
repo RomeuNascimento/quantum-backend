@@ -6,7 +6,10 @@ from datetime import datetime
 from app.routers.custos import custo_unitario_de_preco
 from app.database import get_db
 from app.auth.utils import get_usuario_atual
-from app.models.models import User, Ingrediente, IngredientePreco, ReceitaIngrediente, ProdutoIngrediente
+from app.models.models import (
+    User, Ingrediente, IngredientePreco, ReceitaIngrediente, ProdutoIngrediente,
+    Embalagem, EmbalagemPreco,
+)
 from app.schemas.ingredientes import (
     IngredienteCreate, IngredienteUpdate, IngredienteOut,
     IngredienteDetalhe, IngredientePrecoCreate, IngredientePrecoOut
@@ -151,6 +154,40 @@ def deletar(
     else:
         db.delete(ing)
         db.commit()
+
+
+@router.post("/{id}/converter-em-embalagem", status_code=status.HTTP_201_CREATED)
+def converter_em_embalagem(
+    id: int,
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
+    """Reclassifica um ingrediente como embalagem, copiando o histórico de preços.
+
+    O ingrediente original vira `ativo=False` (não é deletado): receitas/produtos
+    que o referenciam continuam calculando custo com o histórico antigo.
+    """
+    ing = db.query(Ingrediente).options(selectinload(Ingrediente.precos)).filter(
+        Ingrediente.id == id, Ingrediente.user_id == user.id, Ingrediente.ativo == True  # noqa: E712
+    ).first()
+    if not ing:
+        raise HTTPException(status_code=404, detail="Ingrediente não encontrado")
+
+    emb = Embalagem(user_id=user.id, nome=ing.nome, unidade=ing.unidade)
+    db.add(emb)
+    db.flush()
+    for p in ing.precos:
+        db.add(EmbalagemPreco(
+            embalagem_id=emb.id,
+            preco=p.preco,
+            quantidade_embalagem=p.quantidade_embalagem,
+            data_compra=p.data_compra,
+            origem=p.origem,
+            observacao=p.observacao,
+        ))
+    ing.ativo = False
+    db.commit()
+    return {"embalagem_id": emb.id, "nome": emb.nome, "precos_copiados": len(ing.precos)}
 
 
 @router.post("/{id}/precos", response_model=IngredientePrecoOut, status_code=status.HTTP_201_CREATED)

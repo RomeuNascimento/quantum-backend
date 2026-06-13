@@ -3,7 +3,10 @@ from sqlalchemy.orm import Session, selectinload
 from typing import List
 from app.database import get_db
 from app.auth.utils import get_usuario_atual
-from app.models.models import User, Embalagem, EmbalagemPreco, ProdutoEmbalagem
+from app.models.models import (
+    User, Embalagem, EmbalagemPreco, ProdutoEmbalagem,
+    Ingrediente, IngredientePreco,
+)
 from app.schemas.embalagens import (
     EmbalagemCreate, EmbalagemUpdate, EmbalagemOut,
     EmbalagemDetalhe, EmbalagemPrecoCreate, EmbalagemPrecoOut
@@ -140,6 +143,40 @@ def deletar(
     else:
         db.delete(emb)
         db.commit()
+
+
+@router.post("/{id}/converter-em-ingrediente", status_code=status.HTTP_201_CREATED)
+def converter_em_ingrediente(
+    id: int,
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
+    """Reclassifica uma embalagem como ingrediente, copiando o histórico de preços.
+
+    A embalagem original vira `ativo=False` (não é deletada): produtos que a
+    referenciam continuam calculando custo com o histórico antigo.
+    """
+    emb = db.query(Embalagem).options(selectinload(Embalagem.precos)).filter(
+        Embalagem.id == id, Embalagem.user_id == user.id, Embalagem.ativo == True  # noqa: E712
+    ).first()
+    if not emb:
+        raise HTTPException(status_code=404, detail="Embalagem não encontrada")
+
+    ing = Ingrediente(user_id=user.id, nome=emb.nome, unidade=emb.unidade, fator_correcao=1.0)
+    db.add(ing)
+    db.flush()
+    for p in emb.precos:
+        db.add(IngredientePreco(
+            ingrediente_id=ing.id,
+            preco=p.preco,
+            quantidade_embalagem=p.quantidade_embalagem,
+            data_compra=p.data_compra,
+            origem=p.origem,
+            observacao=p.observacao,
+        ))
+    emb.ativo = False
+    db.commit()
+    return {"ingrediente_id": ing.id, "nome": ing.nome, "precos_copiados": len(emb.precos)}
 
 
 @router.post("/{id}/precos", response_model=EmbalagemPrecoOut, status_code=status.HTTP_201_CREATED)
