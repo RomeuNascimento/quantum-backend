@@ -1,10 +1,18 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.models import User, Configuracao, Canal
-from app.auth.schemas import UserCreate, UserLogin, Token, UserOut, ConfiguracaoOut, ConfiguracaoUpdate
-from app.auth.utils import hash_senha, verificar_senha, criar_token, get_usuario_atual
+from app.models.models import User, Configuracao, Canal, RevokedToken
+from app.auth.schemas import (
+    UserCreate, UserLogin, Token, UserOut, ConfiguracaoOut, ConfiguracaoUpdate,
+    AlterarSenha,
+)
+from app.auth.utils import (
+    hash_senha, verificar_senha, criar_token_usuario, get_usuario_atual,
+    decodificar_token, oauth2_scheme,
+)
 from app.ratelimit import RateLimiter
 
 router = APIRouter(prefix="/auth", tags=["Autenticação"])
@@ -70,8 +78,7 @@ def registrar(dados: UserCreate, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail=_MSG_REGISTRO_INDISPONIVEL)
     db.refresh(user)
 
-    token = criar_token({"sub": str(user.id)})
-    return Token(access_token=token)
+    return Token(access_token=criar_token_usuario(user))
 
 
 @router.post("/login", response_model=Token)
@@ -84,8 +91,52 @@ def login(dados: UserLogin, request: Request, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="E-mail ou senha incorretos",
         )
-    token = criar_token({"sub": str(user.id)})
-    return Token(access_token=token)
+    return Token(access_token=criar_token_usuario(user))
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """Revoga o token atual (logout deste dispositivo) adicionando o jti à
+    denylist. Idempotente; aproveita para expurgar tokens já expirados."""
+    payload = decodificar_token(token)  # 401 se inválido/expirado
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    if jti and exp:
+        ja_revogado = db.query(RevokedToken).filter(RevokedToken.jti == jti).first()
+        if not ja_revogado:
+            db.add(RevokedToken(
+                jti=jti,
+                user_id=int(payload.get("sub")),
+                expira_em=datetime.utcfromtimestamp(exp),
+            ))
+        # Expurgo oportunista: entradas expiradas já não bloqueiam nada.
+        db.query(RevokedToken).filter(RevokedToken.expira_em < datetime.utcnow()).delete()
+        db.commit()
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+def logout_all(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db)):
+    """Derruba TODAS as sessões do usuário (todos os dispositivos) bumpando o
+    token_version — qualquer token emitido antes deixa de ser aceito."""
+    user.token_version += 1
+    db.commit()
+
+
+@router.post("/alterar-senha", response_model=Token)
+def alterar_senha(
+    dados: AlterarSenha,
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
+    """Troca a senha e derruba todas as outras sessões (bump em token_version).
+    Devolve um token novo para o dispositivo atual seguir logado."""
+    if not verificar_senha(dados.senha_atual, user.senha_hash):
+        raise HTTPException(status_code=400, detail="Senha atual incorreta")
+    user.senha_hash = hash_senha(dados.senha_nova)
+    user.token_version += 1
+    db.commit()
+    db.refresh(user)
+    return Token(access_token=criar_token_usuario(user))
 
 
 @router.get("/me", response_model=UserOut)

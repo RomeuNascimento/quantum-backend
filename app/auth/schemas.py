@@ -19,6 +19,12 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class AlterarSenha(BaseModel):
+    senha_atual: str
+    # max 72: bcrypt trunca silenciosamente acima disso
+    senha_nova: str = Field(min_length=8, max_length=72)
+
+
 class UserOut(BaseModel):
     id: int
     nome: str

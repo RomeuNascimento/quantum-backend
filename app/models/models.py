@@ -47,6 +47,9 @@ class User(Base):
     stripe_customer_id = Column(String(100), nullable=True, index=True)
     assinatura_status = Column(String(20), nullable=False, default="trial")
     assinatura_validade = Column(DateTime, nullable=True)
+    # Revogação de JWT em massa: o token carrega o `tv` da emissão; bumpar este
+    # contador (logout-all / troca de senha) invalida todas as sessões abertas.
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
 
     configuracao = relationship("Configuracao", back_populates="user", uselist=False)
     colaboradores = relationship("Colaborador", back_populates="user")
@@ -334,3 +337,17 @@ class StripeEvent(Base):
     event_id = Column(String(255), unique=True, nullable=False, index=True)
     tipo = Column(String(100), nullable=False)
     recebido_em = Column(DateTime, default=datetime.utcnow)
+
+
+# ─── REVOGAÇÃO DE JWT ─────────────────────────────────────────────────────────
+
+class RevokedToken(Base):
+    """Denylist de tokens revogados individualmente (logout de um dispositivo).
+    Guarda o `jti` do JWT até a sua expiração natural — depois disso pode ser
+    expurgado, pois o token já não é aceito de qualquer forma."""
+    __tablename__ = "revoked_tokens"
+
+    jti = Column(String(64), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    expira_em = Column(DateTime, nullable=False)
+    revogado_em = Column(DateTime, default=datetime.utcnow)

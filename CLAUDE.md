@@ -3,8 +3,8 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-13 (branch `claude/keen-goldberg-m8aqqx` — segurança esforço médio: `/docs` off por padrão + validação de soma de taxas do canal < 100%)
-**Próxima sessão:** segurança esforço médio restante (Redis rate limiter, jti/denylist JWT); rateio de custos fixos; alertas proativos de margem/preço; auditar ingredientes kg/L em produção
+**Última sessão:** 2026-06-13 (branch `claude/keen-goldberg-m8aqqx` — segurança esforço médio: `/docs` off por padrão · validação de soma de taxas do canal < 100% · revogação de JWT (jti/denylist + token_version) — ⚠️ requer `alembic upgrade head` migration 008)
+**Próxima sessão:** segurança esforço médio restante (Redis rate limiter); rateio de custos fixos; alertas proativos de margem/preço; auditar ingredientes kg/L em produção
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---
@@ -26,11 +26,29 @@
 - `validar_margem_viavel()` em `criar/atualizar_preco_produto` → 400 se margem+taxas ≥ 100%
   (antes o preço sugerido caía para R$ 0 silenciosamente).
 
+**Revogação de JWT (jti + denylist + token_version) — migration 008:**
+- Token agora carrega `jti` (uuid único) + `tv` (token_version do usuário na emissão).
+  `criar_token_usuario(user)` em `auth/utils.py` substitui `criar_token({"sub":...})`.
+- `get_usuario_atual` rejeita (401) se `tv` do token ≠ `user.token_version` (revogação
+  em massa) **ou** se o `jti` está na denylist `revoked_tokens` (revogação individual).
+- `POST /auth/logout` — denylist do jti do token atual (logout de um dispositivo);
+  idempotente + expurgo oportunista de jti expirados.
+- `POST /auth/logout-all` — bump em `token_version` (derruba todas as sessões).
+- `POST /auth/alterar-senha` — verifica senha atual, troca, bump token_version
+  (derruba as outras sessões) e devolve token novo p/ o dispositivo atual.
+- **Retrocompat:** token antigo sem `tv`/`jti` segue válido enquanto `token_version==0`
+  (e expira em 30 min de qualquer forma). Testado em `tests/test_revogacao.py` (5 testes).
+- ⚠️ **Requer `alembic upgrade head` (migration 008)** em produção — adiciona
+  `users.token_version` (server_default 0) + tabela `revoked_tokens`. Upgrade/downgrade
+  validados em sqlite isolado.
+- Frontend: `authStore.logout()` chama `/auth/logout` (best-effort, sem recursão de 401).
+
 **Infra de teste:** `conftest.py` ganhou fixture autouse que zera os rate limiters
 em memória por módulo (estado vazava entre módulos e disparava 429 espúrio).
 
-**Pendências de deploy (usuário):** disparar deploy do backend no EasyPanel; se quiser
-manter o Swagger acessível em produção, setar `ENABLE_DOCS=true` antes.
+**Pendências de deploy (usuário):** `alembic upgrade head` (migration 008) + disparar
+deploy do backend no EasyPanel; se quiser manter o Swagger acessível em produção, setar
+`ENABLE_DOCS=true` antes.
 
 ---
 
@@ -77,7 +95,7 @@ manter o Swagger acessível em produção, setar `ENABLE_DOCS=true` antes.
 
 **Pendências da auditoria (esforço médio):**
 - Rate limiter em Redis — o atual é em memória; vira teatro com `--workers N` ou réplicas. Enquanto isso o startCommand DEVE manter 1 worker
-- `jti` + denylist de JWT — token roubado hoje é irrevogável até `exp`; trocar senha não derruba sessões
+- [x] `jti` + denylist de JWT ✅ 2026-06-13 (parte 3) — token_version (logout-all / troca de senha) + denylist por jti (logout); migration 008
 - [x] Proteger/desabilitar `/docs` (Swagger) em produção ✅ 2026-06-13 (parte 3) — `enable_docs` off por padrão
 - [x] Validar soma de taxas do canal < 100% ✅ 2026-06-13 (parte 3) — 422/400 + guard de margem+taxas
 - Conferir em produção qual IP chega no X-Forwarded-For (validar fix do rate limit)
