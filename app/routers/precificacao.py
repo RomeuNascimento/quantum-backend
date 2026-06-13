@@ -24,6 +24,18 @@ def calcular_preco_sugerido(custo_total: float, margem_pct: float, canal: Canal)
     return custo_total / divisor
 
 
+def validar_margem_viavel(margem_pct: float, canal: Canal) -> None:
+    """Rejeita a precificação quando margem + taxas ≥ 100% — caso em que o preço
+    sugerido seria infinito/negativo e o cálculo devolveria R$ 0 silenciosamente."""
+    soma = margem_pct + canal.taxa_plataforma_pct + canal.taxa_cartao_pct + canal.imposto_pct
+    if soma >= 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Margem + taxas do canal devem somar menos de 100% para haver preço "
+                   f"sugerido — recebido {soma:g}%.",
+        )
+
+
 # ─── RELATÓRIO DE MARGEM ─────────────────────────────────────────────────────
 
 @router.get("/relatorio-margem", response_model=RelatorioMargemOut)
@@ -111,6 +123,15 @@ def atualizar_canal(
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     for campo, valor in dados.model_dump(exclude_unset=True).items():
         setattr(canal, campo, valor)
+
+    soma_taxas = canal.taxa_plataforma_pct + canal.taxa_cartao_pct + canal.imposto_pct
+    if soma_taxas >= 100:
+        raise HTTPException(
+            status_code=400,
+            detail="A soma das taxas do canal (plataforma + cartão + imposto) deve ser "
+                   f"menor que 100% — resultaria em {soma_taxas:g}%.",
+        )
+
     db.commit()
     db.refresh(canal)
     return canal
@@ -183,6 +204,8 @@ def criar_preco_produto(
     if not canal:
         raise HTTPException(status_code=404, detail="Canal não encontrado")
 
+    validar_margem_viavel(dados.margem_pct, canal)
+
     existente = db.query(ProdutoPreco).filter(
         ProdutoPreco.produto_id == produto_id,
         ProdutoPreco.canal_id == dados.canal_id,
@@ -239,6 +262,9 @@ def atualizar_preco_produto(
 
     for campo, valor in dados.model_dump(exclude_unset=True).items():
         setattr(pp, campo, valor)
+
+    validar_margem_viavel(pp.margem_pct, pp.canal)
+
     db.commit()
     db.refresh(pp)
 

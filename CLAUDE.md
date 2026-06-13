@@ -3,9 +3,34 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-13 (branch `claude/inspiring-fermat-9xdxns` — auditoria de segurança DEPLOYADA (migration 007) · embalagens na nota fiscal + conversão · plano mensal Stripe; ⚠️ PRs #3 e #4 mergeados mas NÃO deployados — disparar deploy do backend)
-**Próxima sessão:** segurança esforço médio (Redis rate limiter, jti/denylist JWT, /docs); rateio de custos fixos; alertas proativos de margem/preço; auditar ingredientes kg/L em produção
+**Última sessão:** 2026-06-13 (branch `claude/keen-goldberg-m8aqqx` — segurança esforço médio: `/docs` off por padrão + validação de soma de taxas do canal < 100%)
+**Próxima sessão:** segurança esforço médio restante (Redis rate limiter, jti/denylist JWT); rateio de custos fixos; alertas proativos de margem/preço; auditar ingredientes kg/L em produção
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
+
+---
+
+## Sessão 2026-06-13 (parte 3) — Segurança esforço médio (parcial)
+
+> Branch `claude/keen-goldberg-m8aqqx`. Dois itens da lista "pendências da auditoria
+> (esforço médio)" implementados e cobertos por teste (`tests/test_canal_taxas.py`).
+
+**`/docs`, `/redoc`, `/openapi.json` desligados por padrão:**
+- `Settings.enable_docs: bool = False` (`app/database.py`); `main.py` passa
+  `docs_url/redoc_url/openapi_url = None` quando off. Esconde o schema da API em produção.
+- ⚠️ **Após o deploy, `https://api.quantumcalc.com.br/docs` vira 404.** Para reativar
+  (staging/depuração): `ENABLE_DOCS=true` no EasyPanel. Documentado no `.env.example`.
+
+**Validação da soma de taxas do canal < 100%:**
+- `CanalCreate` (Pydantic `model_validator`) → 422 se plataforma+cartão+imposto ≥ 100%.
+- `atualizar_canal` valida a soma após o merge dos campos parciais → 400.
+- `validar_margem_viavel()` em `criar/atualizar_preco_produto` → 400 se margem+taxas ≥ 100%
+  (antes o preço sugerido caía para R$ 0 silenciosamente).
+
+**Infra de teste:** `conftest.py` ganhou fixture autouse que zera os rate limiters
+em memória por módulo (estado vazava entre módulos e disparava 429 espúrio).
+
+**Pendências de deploy (usuário):** disparar deploy do backend no EasyPanel; se quiser
+manter o Swagger acessível em produção, setar `ENABLE_DOCS=true` antes.
 
 ---
 
@@ -50,11 +75,11 @@
 - **`criar_preco_produto`** — race do check-then-insert → 400 via IntegrityError (antes 500)
 - **RateLimiter** — expurgo de chaves antigas (dict crescia sem limite)
 
-**Pendências da auditoria (esforço médio, NÃO feitas):**
+**Pendências da auditoria (esforço médio):**
 - Rate limiter em Redis — o atual é em memória; vira teatro com `--workers N` ou réplicas. Enquanto isso o startCommand DEVE manter 1 worker
 - `jti` + denylist de JWT — token roubado hoje é irrevogável até `exp`; trocar senha não derruba sessões
-- Proteger/desabilitar `/docs` (Swagger) em produção — expõe o schema da API
-- Validar soma de taxas do canal < 100% (preço sugerido vira R$ 0 silencioso)
+- [x] Proteger/desabilitar `/docs` (Swagger) em produção ✅ 2026-06-13 (parte 3) — `enable_docs` off por padrão
+- [x] Validar soma de taxas do canal < 100% ✅ 2026-06-13 (parte 3) — 422/400 + guard de margem+taxas
 - Conferir em produção qual IP chega no X-Forwarded-For (validar fix do rate limit)
 
 **Pontos fortes confirmados pela auditoria:** multi-tenancy sem furos (varredura nos 9 routers), zero SQL raw, IDOR fixes de junho completos, catálogo da IA corretamente escopado ao tenant.

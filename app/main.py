@@ -24,6 +24,11 @@ app = FastAPI(
     title="Quantum API",
     description="API para gestão de custos e precificação para confeiteiros",
     version="1.0.0",
+    # Swagger/ReDoc/OpenAPI desligados por padrão (expõem o schema da API).
+    # Defina ENABLE_DOCS=true no ambiente para reativá-los (ex.: staging).
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url="/redoc" if settings.enable_docs else None,
+    openapi_url="/openapi.json" if settings.enable_docs else None,
 )
 
 app.add_middleware(

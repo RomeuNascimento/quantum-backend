@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expiration: int = 30
     allow_origins: str = "https://quantumcalc.com.br"
+    enable_docs: bool = False  # Swagger/ReDoc/OpenAPI expostos só se True (default: off em produção)
 
     class Config:
         env_file = ".env"

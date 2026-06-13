@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
 
@@ -7,6 +7,16 @@ class CanalCreate(BaseModel):
     taxa_plataforma_pct: float = Field(default=0.0, ge=0, lt=100)
     taxa_cartao_pct: float = Field(default=0.0, ge=0, lt=100)
     imposto_pct: float = Field(default=0.0, ge=0, lt=100)
+
+    @model_validator(mode="after")
+    def _validar_soma_taxas(self):
+        soma = self.taxa_plataforma_pct + self.taxa_cartao_pct + self.imposto_pct
+        if soma >= 100:
+            raise ValueError(
+                "A soma das taxas do canal (plataforma + cartão + imposto) deve ser "
+                f"menor que 100% — recebido {soma:g}%."
+            )
+        return self
 
 
 class CanalUpdate(BaseModel):
