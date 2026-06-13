@@ -3,9 +3,35 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-12 (branch `claude/practical-cray-vksesn` — billing Stripe completo + DEPLOY em produção: migrations 004/005/006 aplicadas, backend+frontend no ar)
-**Próxima sessão:** Fase 2 restante (snapshot de custo / refactor cálculo); auditar ingredientes kg/L em produção (efeito da migration 005 + fator_unidade)
+**Última sessão:** 2026-06-13 (branch `claude/inspiring-fermat-9xdxns` — auditoria de segurança cyber-chief + correções DEPLOYADAS: migration 007 aplicada em produção, backend no ar)
+**Próxima sessão:** itens de esforço médio da auditoria de segurança (Redis rate limiter, jti/denylist JWT, proteger /docs); Fase 2 restante; auditar ingredientes kg/L em produção
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
+
+---
+
+## Sessão 2026-06-13 — Auditoria de segurança (squad cyber-chief) + correções
+
+> Auditoria estática completa pelo squad cyber-chief. Correções de esforço baixo
+> implementadas, mergeadas (PR #1) e **deployadas em produção em 2026-06-13**
+> (migration 007 aplicada pelo usuário do PC local — psycopg2-binary no Windows).
+
+**Corrigido e em produção:**
+- **Idempotência do webhook Stripe** — tabela `stripe_events` (UNIQUE event_id, migration `007_stripe_events.py`) + short-circuit; Stripe entrega at-least-once. Coberto por `test_webhook_idempotente` (15 testes passando)
+- **IP real atrás do proxy** — `_ip()` em `auth/router.py` usa o último valor do `X-Forwarded-For` (antes: todos os clientes no bucket do IP do proxy)
+- **Hardening IA** — magic bytes no upload (`_detectar_media_type`; content-type do cliente não é confiável) + `BLOCO_SEGURANCA` nos prompts + conteúdo textual em `<documento_do_usuario>` (anti prompt injection)
+- **Anti-enumeração por timing no login** — `_DUMMY_HASH` verificado quando e-mail não existe
+- **CORS** — métodos/headers explícitos (antes wildcard com credentials)
+- **`criar_preco_produto`** — race do check-then-insert → 400 via IntegrityError (antes 500)
+- **RateLimiter** — expurgo de chaves antigas (dict crescia sem limite)
+
+**Pendências da auditoria (esforço médio, NÃO feitas):**
+- Rate limiter em Redis — o atual é em memória; vira teatro com `--workers N` ou réplicas. Enquanto isso o startCommand DEVE manter 1 worker
+- `jti` + denylist de JWT — token roubado hoje é irrevogável até `exp`; trocar senha não derruba sessões
+- Proteger/desabilitar `/docs` (Swagger) em produção — expõe o schema da API
+- Validar soma de taxas do canal < 100% (preço sugerido vira R$ 0 silencioso)
+- Conferir em produção qual IP chega no X-Forwarded-For (validar fix do rate limit)
+
+**Pontos fortes confirmados pela auditoria:** multi-tenancy sem furos (varredura nos 9 routers), zero SQL raw, IDOR fixes de junho completos, catálogo da IA corretamente escopado ao tenant.
 
 ---
 
@@ -181,6 +207,11 @@ Mensagem genérica do `client.js` quando `error.response` é `undefined` (sem re
 > **Migrations:** rodar manualmente do local com todas as env vars:
 > `DATABASE_URL=postgresql+psycopg2://...@72.61.132.202:5432/quantum JWT_SECRET=... alembic upgrade head`
 > O banco externo fica em `72.61.132.202:5432` (porta 5432 exposta no EasyPanel).
+>
+> ✅ **Migration 007 APLICADA em produção 2026-06-13** (`stripe_events`) — rodada
+> do Windows do usuário; no Windows, `psycopg2` não compila: usar
+> `pip install psycopg2-binary` e instalar o requirements sem a linha do psycopg2.
+> Do PC local o host é `72.61.132.202:5432` (não `quantum_quantum-db`).
 >
 > ✅ **APLICADO em produção 2026-06-12** — `alembic upgrade head` rodado com
 > sucesso (banco saiu de 003 → 006). Migrations 004 (índices + UNIQUE
