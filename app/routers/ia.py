@@ -68,6 +68,13 @@ REGRAS — PESO DA EMBALAGEM:
 - Ex: "LEITE UHT TP 1L" → peso_embalagem_g: 1000
 - Se não houver peso no nome → peso_embalagem_g: null
 
+REGRAS — TIPO (classificação do item):
+- "tipo": "ingrediente" para comestíveis/insumos de receita (farinha, chocolate, ovo, leite...)
+- "tipo": "embalagem" para itens de embalar/servir/descartáveis: caixas, sacos, sacolas,
+  potes, formas e forminhas de papel, fitas, laços, etiquetas, tags, copos, tampas,
+  colheres descartáveis, papel manteiga/filme/alumínio, embalagens plásticas
+- Na dúvida, use "ingrediente"
+
 REGRAS — QUANTIDADE E PREÇO:
 - quantidade: número de embalagens compradas (não o peso; ex: comprou 2 pacotes → 2)
 - preco_unitario: preço de UMA embalagem (R$)
@@ -75,7 +82,7 @@ REGRAS — QUANTIDADE E PREÇO:
 
 Inclua TODOS os itens da nota. Retorne SOMENTE JSON válido, sem markdown:
 
-{"data_compra": "YYYY-MM-DD", "itens": [{"nome": "chocolate meio amargo", "nome_original": "CHOCOLATE MID DKT 200G", "marca": "Harald", "peso_embalagem_g": 200, "quantidade": 2, "unidade": "g", "preco_unitario": 5.99, "preco_total": 11.98, "ingrediente_id_sugerido": null}]}
+{"data_compra": "YYYY-MM-DD", "itens": [{"nome": "chocolate meio amargo", "nome_original": "CHOCOLATE MID DKT 200G", "marca": "Harald", "tipo": "ingrediente", "peso_embalagem_g": 200, "quantidade": 2, "unidade": "g", "preco_unitario": 5.99, "preco_total": 11.98, "ingrediente_id_sugerido": null}]}
 
 Use null para data_compra se não visível. Use null para peso_embalagem_g se o peso não constar no nome."""
 
@@ -259,9 +266,13 @@ def processar_nota_fiscal(
         data = _parse(resp, "itens")
         # Normalise units
         for item in data["itens"]:
-            if not isinstance(item, dict) or item.get("unidade") not in UNIDADES_VALIDAS:
-                if isinstance(item, dict):
-                    item["unidade"] = "unid"
+            if not isinstance(item, dict):
+                continue
+            if item.get("unidade") not in UNIDADES_VALIDAS:
+                item["unidade"] = "unid"
+            # tipo fora do domínio (ou ausente) → ingrediente, o caso comum
+            if item.get("tipo") not in ("ingrediente", "embalagem"):
+                item["tipo"] = "ingrediente"
         data["itens"] = [i for i in data["itens"] if isinstance(i, dict)]
         _validar_ids_sugeridos(data["itens"], {ing.id for ing in catalogo})
         return data
