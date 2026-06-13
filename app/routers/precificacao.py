@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from typing import List
 from app.database import get_db
@@ -191,7 +192,12 @@ def criar_preco_produto(
 
     pp = ProdutoPreco(produto_id=produto_id, **dados.model_dump())
     db.add(pp)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Race no check-then-insert: a UNIQUE (produto_id, canal_id) segurou o duplicado
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Já existe precificação para este canal")
     db.refresh(pp)
 
     vh = get_valor_hora_padrao(user, db)

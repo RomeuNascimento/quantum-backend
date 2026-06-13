@@ -109,3 +109,44 @@ def test_paywall_libera_apos_reativacao(client, auth):
     assert client.get("/ingredientes/", headers=auth).status_code == 200
     body = client.get("/billing/status", headers=auth).json()
     assert body["status"] == "ativa"
+
+
+# ---------- webhook: idempotência (Stripe entrega at-least-once) ----------
+
+def test_webhook_idempotente(client, auth, monkeypatch):
+    import stripe
+
+    monkeypatch.setenv("STRIPE_API_KEY", "sk_test_x")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_x")
+    _set_user(
+        "billing@test.com",
+        stripe_customer_id="cus_123",
+        assinatura_status="trial",
+        assinatura_validade=None,
+    )
+    evento = {
+        "id": "evt_idem_1",
+        "type": "checkout.session.completed",
+        "data": {"object": {"customer": "cus_123"}},
+    }
+    monkeypatch.setattr(
+        stripe.Webhook, "construct_event", staticmethod(lambda payload, sig, secret: evento)
+    )
+
+    # primeira entrega: ativa a assinatura
+    r1 = client.post("/billing/webhook", content=b"{}", headers={"stripe-signature": "t"})
+    assert r1.status_code == 200
+    db = TestingSession()
+    user = db.query(User).filter(User.email == "billing@test.com").first()
+    assert user.assinatura_status == "ativa"
+    db.close()
+
+    # reentrega do MESMO event_id: precisa ser no-op — adultera o status para
+    # provar que o reprocesso não reescreve nada
+    _set_user("billing@test.com", assinatura_status="trial")
+    r2 = client.post("/billing/webhook", content=b"{}", headers={"stripe-signature": "t"})
+    assert r2.status_code == 200
+    db = TestingSession()
+    user = db.query(User).filter(User.email == "billing@test.com").first()
+    assert user.assinatura_status == "trial"  # duplicado não reprocessou
+    db.close()
