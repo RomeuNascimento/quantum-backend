@@ -3,9 +3,35 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-13 (branch `claude/inspiring-fermat-9xdxns` — auditoria de segurança cyber-chief + correções DEPLOYADAS: migration 007 aplicada em produção, backend no ar)
-**Próxima sessão:** itens de esforço médio da auditoria de segurança (Redis rate limiter, jti/denylist JWT, proteger /docs); Fase 2 restante; auditar ingredientes kg/L em produção
+**Última sessão:** 2026-06-13 (branch `claude/inspiring-fermat-9xdxns` — auditoria de segurança DEPLOYADA (migration 007) · embalagens na nota fiscal + conversão · plano mensal Stripe; ⚠️ PRs #3 e #4 mergeados mas NÃO deployados — disparar deploy do backend)
+**Próxima sessão:** segurança esforço médio (Redis rate limiter, jti/denylist JWT, /docs); rateio de custos fixos; alertas proativos de margem/preço; auditar ingredientes kg/L em produção
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
+
+---
+
+## Sessão 2026-06-13 (parte 2) — Embalagens + plano mensal
+
+**Embalagens (PR #3):**
+- `PROMPT_NOTA` classifica cada item com `tipo: ingrediente|embalagem` (caixas, sacos,
+  formas, descartáveis); normalização defensiva (inválido → ingrediente)
+- `POST /ingredientes/{id}/converter-em-embalagem` e
+  `POST /embalagens/{id}/converter-em-ingrediente` — copiam histórico de preços,
+  original vira `ativo=False` (receitas/produtos existentes seguem calculando)
+- `tests/test_conversao.py` (ida/volta/tenant) — suíte com 18 testes
+
+**Plano mensal Stripe (PR #4):**
+- `/billing/checkout` aceita `{plano: anual|mensal}`; price mensal via env
+  `STRIPE_PRICE_ID_MENSAL` (sem ela, só anual — rollout controlado)
+- `GET /billing/planos`: valores reais do Stripe (cache em processo)
+- Webhook: fallback de validade 368d→35d provisórios (368 daria 1 ano grátis a
+  assinante mensal); pagamento só ESTENDE validade, nunca encurta
+- `setup_stripe.py` cria também o preço mensal R$ 19,90
+
+**⚠️ Pendências de deploy (usuário):**
+1. Disparar deploy do backend no EasyPanel (PRs #3 e #4 mergeados, sem migration nova)
+2. Para ativar o mensal: `STRIPE_API_KEY=rk_live_... python scripts/setup_stripe.py`
+   → configurar `STRIPE_PRICE_ID_MENSAL` no EasyPanel → redeploy
+3. Frontend: deploy também pendente (PRs de UX/embalagens/orçamento mergeados)
 
 ---
 
