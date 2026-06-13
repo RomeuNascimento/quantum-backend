@@ -15,8 +15,10 @@ import os
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from typing import Literal, Optional
 
 from app.auth.utils import get_usuario_atual
 from app.database import get_db
@@ -80,14 +82,53 @@ def _customer_id(stripe, user: User, db: Session) -> str:
     return customer.id
 
 
+def _price_id(plano: str) -> str:
+    env = "STRIPE_PRICE_ID_MENSAL" if plano == "mensal" else "STRIPE_PRICE_ID"
+    price_id = os.getenv(env)
+    if not price_id:
+        raise HTTPException(status_code=503, detail="Plano não configurado no servidor.")
+    return price_id
+
+
+# Cache em processo dos valores dos planos (preços mudam raramente; restart limpa)
+_planos_cache: Optional[list] = None
+
+
+@router.get("/planos")
+def listar_planos():
+    """Planos disponíveis com valor real vindo do Stripe (fonte única de preço)."""
+    global _planos_cache
+    if _planos_cache is not None:
+        return {"planos": _planos_cache}
+    stripe = _stripe()
+    planos = []
+    for plano, env in (("anual", "STRIPE_PRICE_ID"), ("mensal", "STRIPE_PRICE_ID_MENSAL")):
+        price_id = os.getenv(env)
+        if not price_id:
+            continue
+        try:
+            p = stripe.Price.retrieve(price_id)
+            planos.append({"plano": plano, "preco": p["unit_amount"] / 100})
+        except Exception:
+            logger.warning("billing: falha ao buscar price %s no Stripe", price_id)
+    _planos_cache = planos
+    return {"planos": planos}
+
+
+class CheckoutIn(BaseModel):
+    plano: Literal["anual", "mensal"] = "anual"
+
+
 # Endpoints síncronos (def) de propósito: chamadas à API do Stripe rodam no
 # threadpool e não travam o event loop (mesma decisão dos endpoints /ia/).
 @router.post("/checkout")
-def criar_checkout(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db)):
+def criar_checkout(
+    dados: Optional[CheckoutIn] = None,
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
     stripe = _stripe()
-    price_id = os.getenv("STRIPE_PRICE_ID")
-    if not price_id:
-        raise HTTPException(status_code=503, detail="Plano não configurado no servidor.")
+    price_id = _price_id(dados.plano if dados else "anual")
     session = stripe.checkout.Session.create(
         mode="subscription",
         customer=_customer_id(stripe, user, db),
@@ -148,9 +189,16 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 if linhas:
                     period_end = linhas[0].get("period", {}).get("end")
             if period_end:
-                user.assinatura_validade = datetime.utcfromtimestamp(period_end) + timedelta(days=3)
+                nova_validade = datetime.utcfromtimestamp(period_end) + timedelta(days=3)
             else:
-                user.assinatura_validade = datetime.utcnow() + timedelta(days=368)
+                # checkout.session.completed não traz o período (e agora há plano
+                # mensal E anual) — validade provisória; o invoice.paid, que chega
+                # junto, corrige para o período real + carência
+                nova_validade = datetime.utcnow() + timedelta(days=35)
+            # Pagamento só estende a validade, nunca encurta — a ordem de entrega
+            # dos eventos do Stripe não é garantida
+            if not user.assinatura_validade or nova_validade > user.assinatura_validade:
+                user.assinatura_validade = nova_validade
             logger.info("billing: assinatura ativa user_id=%s (%s)", user.id, tipo)
     elif tipo in ("customer.subscription.deleted", "invoice.payment_failed"):
         user = _user_por_customer(db, obj.get("customer"))
