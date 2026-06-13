@@ -15,11 +15,12 @@ import os
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.utils import get_usuario_atual
 from app.database import get_db
-from app.models.models import User
+from app.models.models import StripeEvent, User
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["Billing"])
@@ -130,6 +131,12 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     tipo = event["type"]
     obj = event["data"]["object"]
 
+    # Idempotência: o Stripe entrega at-least-once e reenvia eventos. O registro
+    # do event_id (UNIQUE) garante que reprocessos viram no-op.
+    if db.query(StripeEvent).filter(StripeEvent.event_id == event["id"]).first():
+        return {"received": True}
+    db.add(StripeEvent(event_id=event["id"], tipo=tipo))
+
     if tipo in ("checkout.session.completed", "invoice.paid"):
         user = _user_por_customer(db, obj.get("customer"))
         if user:
@@ -144,16 +151,19 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 user.assinatura_validade = datetime.utcfromtimestamp(period_end) + timedelta(days=3)
             else:
                 user.assinatura_validade = datetime.utcnow() + timedelta(days=368)
-            db.commit()
             logger.info("billing: assinatura ativa user_id=%s (%s)", user.id, tipo)
     elif tipo in ("customer.subscription.deleted", "invoice.payment_failed"):
         user = _user_por_customer(db, obj.get("customer"))
         if user and tipo == "customer.subscription.deleted":
             user.assinatura_status = "vencida"
-            db.commit()
             logger.info("billing: assinatura encerrada user_id=%s", user.id)
         # payment_failed: não derruba na hora — a validade (com carência) expira sozinha
 
+    try:
+        db.commit()
+    except IntegrityError:
+        # Entrega concorrente do mesmo evento: a UNIQUE segurou o duplicado
+        db.rollback()
     return {"received": True}
 
 

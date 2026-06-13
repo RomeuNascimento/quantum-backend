@@ -321,3 +321,16 @@ class CustoFixo(Base):
     criado_em = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="custos_fixos")
+
+
+# ─── BILLING ──────────────────────────────────────────────────────────────────
+
+class StripeEvent(Base):
+    """Eventos de webhook já processados — o Stripe entrega at-least-once,
+    então o event_id precisa ser idempotente (UNIQUE) para evitar reprocesso."""
+    __tablename__ = "stripe_events"
+
+    id = Column(Integer, primary_key=True)
+    event_id = Column(String(255), unique=True, nullable=False, index=True)
+    tipo = Column(String(100), nullable=False)
+    recebido_em = Column(DateTime, default=datetime.utcnow)

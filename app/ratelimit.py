@@ -18,6 +18,13 @@ class RateLimiter:
     def checar(self, chave) -> None:
         agora = time.time()
         with self._lock:
+            # Expurgo periódico: sem isso o dict cresce uma entrada por chave
+            # (IP/user) para sempre — vazamento de memória com IPs rotativos
+            if len(self._hits) > 10_000:
+                self._hits = defaultdict(
+                    list,
+                    {k: v for k, v in self._hits.items() if v and agora - v[-1] < self.janela_s},
+                )
             recentes = [t for t in self._hits[chave] if agora - t < self.janela_s]
             if len(recentes) >= self.max_chamadas:
                 raise HTTPException(status_code=429, detail=self.detail)

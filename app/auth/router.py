@@ -14,7 +14,19 @@ _register_limiter = RateLimiter(5, 3600, "Muitas contas criadas a partir deste e
 
 
 def _ip(request: Request) -> str:
+    # Atrás do reverse proxy (EasyPanel/Traefik), client.host é o IP do proxy —
+    # todos os clientes cairiam no mesmo bucket de rate limit. O proxy ANEXA o
+    # IP real ao fim do X-Forwarded-For, então o último valor é o único que ele
+    # garante (os anteriores podem ser forjados pelo cliente).
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[-1].strip()
     return request.client.host if request.client else "desconhecido"
+
+
+# Hash dummy verificado quando o e-mail não existe: iguala o tempo de resposta
+# de "usuário inexistente" e "senha errada" (anti-enumeração por timing)
+_DUMMY_HASH = hash_senha("timing-equalizer-nao-e-senha-real")
 
 
 # Mensagem deliberadamente vaga: não confirma que o e-mail existe na base
@@ -66,7 +78,8 @@ def registrar(dados: UserCreate, request: Request, db: Session = Depends(get_db)
 def login(dados: UserLogin, request: Request, db: Session = Depends(get_db)):
     _login_limiter.checar(_ip(request))
     user = db.query(User).filter(User.email == dados.email).first()
-    if not user or not verificar_senha(dados.senha, user.senha_hash):
+    senha_ok = verificar_senha(dados.senha, user.senha_hash if user else _DUMMY_HASH)
+    if not user or not senha_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="E-mail ou senha incorretos",
