@@ -8,18 +8,40 @@ from app.database import get_db
 from app.auth.utils import get_usuario_atual
 from app.models.models import (
     User, Ingrediente, IngredientePreco, ReceitaIngrediente, ProdutoIngrediente,
-    Embalagem, EmbalagemPreco,
+    Embalagem, EmbalagemPreco, UnidadeEnum,
 )
 from app.schemas.ingredientes import (
     IngredienteCreate, IngredienteUpdate, IngredienteOut,
     IngredienteDetalhe, IngredientePrecoCreate, IngredientePrecoOut
 )
+import unicodedata
 
 router = APIRouter(prefix="/ingredientes", tags=["Ingredientes"])
 
 
 def calcular_custo_unitario(preco: IngredientePreco, fator_correcao: float, unidade=None) -> float:
     return custo_unitario_de_preco(preco, unidade, fator_correcao)
+
+
+def _normalizar(s: str) -> str:
+    return unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().strip().lower()
+
+
+def garantir_agua(db: Session, user_id: int, ativos=None):
+    """Garante um ingrediente 'Água' (neutro, sem preço → custo 0) para o usuário.
+    É um ingrediente comum (aparece no seletor de receitas), só que já vem pronto
+    — não precisa ser cadastrado. Idempotente: não recria se já existe."""
+    if ativos is None:
+        ativos = db.query(Ingrediente).filter(
+            Ingrediente.user_id == user_id, Ingrediente.ativo == True
+        ).all()
+    if any(_normalizar(i.nome) == "agua" for i in ativos):
+        return None
+    agua = Ingrediente(user_id=user_id, nome="Água", unidade=UnidadeEnum.ml, fator_correcao=1.0, ativo=True)
+    db.add(agua)
+    db.commit()
+    db.refresh(agua)
+    return agua
 
 
 @router.get("/", response_model=List[IngredienteOut])
@@ -29,6 +51,10 @@ def listar(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db
     ).filter(
         Ingrediente.user_id == user.id, Ingrediente.ativo == True
     ).all()
+    # Água é garantida na 1ª listagem (cobre contas já existentes)
+    nova_agua = garantir_agua(db, user.id, ingredientes)
+    if nova_agua is not None:
+        ingredientes.append(nova_agua)
     result = []
     for ing in ingredientes:
         ultimo = next(

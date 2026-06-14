@@ -3,8 +3,30 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-13 (branch `claude/keen-goldberg-m8aqqx` — segurança esforço médio COMPLETA: `/docs` off por padrão · validação de soma de taxas do canal < 100% · revogação de JWT (jti/denylist + token_version) · rate limiter com backend Redis opcional — ⚠️ requer `alembic upgrade head` migration 008)
-**Próxima sessão:** rateio de custos fixos; alertas proativos de margem/preço; auditar ingredientes kg/L em produção; refresh token (JWT 30min — mudança coordenada com frontend); conferir X-Forwarded-For em produção
+**Última sessão:** 2026-06-14 (branch `claude/keen-goldberg-m8aqqx` — **Água** como ingrediente neutro: semeada no register + garantida na 1ª listagem; sem preço → custo 0. SEM migration — só deploy do backend)
+**Penúltima:** 2026-06-13 — segurança esforço médio COMPLETA (`/docs` off · taxas canal < 100% · revogação JWT migration 008 · rate limiter Redis opcional)
+**Próxima sessão:** decisão OVO/ÓLEO por unidade vs peso (ver nota abaixo); alertas proativos de margem/preço; auditar ingredientes kg/L em produção; refresh token (JWT 30min); conferir X-Forwarded-For em produção
+
+---
+
+## Sessão 2026-06-14 — Água (ingrediente neutro)
+
+> Branch `claude/keen-goldberg-m8aqqx`. **Sem migration** — só deploy do backend.
+
+- `app/routers/ingredientes.py`: `garantir_agua(db, user_id)` cria um ingrediente
+  **"Água"** (unidade `ml`, sem preço → custo 0) se o usuário ainda não tem (match por
+  nome normalizado `agua`). Chamada no `listar` (cobre contas já existentes, idempotente —
+  cria 1× só) e no `auth/register` (contas novas já nascem com ela).
+- Custo 0 sai de graça: `custo_unitario_de_preco(None,...)` já retorna 0.0 — água sem
+  preço soma 0 na receita. É um ingrediente comum (aparece no seletor), só que pronto.
+- `tests/test_agua.py` (3 testes): vem pronta sem custo, não duplica, soma 0 na receita.
+- Frontend: nenhuma mudança — água aparece sozinha no seletor de ingredientes da receita.
+
+> **DÚVIDA EM ABERTO — OVO e ÓLEO (unidade vs peso):** receita pede "3 ovos" (contagem,
+> `unidade=unid`) mas às vezes ovo é medido em peso (g). Hoje o ingrediente tem UMA
+> unidade só. Ver análise/decisão no fim do CLAUDE.md do frontend (sessão de unidades).
+> Óleo: `ml`/`L` ok hoje (consumo em ml); ressalva da densidade (~0,92 g/ml) ignorada
+> e o gotcha kg/L do M3 ainda valem.
 **Status:** PRODUÇÃO — backend rodando em api.quantumcalc.com.br
 
 ---

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.models import User, Configuracao, Canal, RevokedToken
+from app.models.models import User, Configuracao, Canal, RevokedToken, Ingrediente, UnidadeEnum
 from app.auth.schemas import (
     UserCreate, UserLogin, Token, UserOut, ConfiguracaoOut, ConfiguracaoUpdate,
     AlterarSenha,
@@ -70,6 +70,11 @@ def registrar(dados: UserCreate, request: Request, db: Session = Depends(get_db)
         ativo=True,
     )
     db.add(ifood)
+
+    # Água: ingrediente neutro (sem preço → custo 0), já vem pronto
+    db.add(Ingrediente(
+        user_id=user.id, nome="Água", unidade=UnidadeEnum.ml, fator_correcao=1.0, ativo=True,
+    ))
     try:
         db.commit()
     except IntegrityError:
