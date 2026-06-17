@@ -119,6 +119,7 @@ def calcular_produto(produto: Produto, valor_hora_padrao: float) -> dict:
             id=mo.id,
             descricao=mo.descricao,
             tempo_min=mo.tempo_min,
+            colaborador_id=mo.colaborador_id,
             colaborador_nome=nome,
             custo=custo_mo_item,
         ))

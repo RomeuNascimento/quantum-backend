@@ -60,6 +60,7 @@ class ProdutoMOMontagemOut(BaseModel):
     id: int
     descricao: str
     tempo_min: float
+    colaborador_id: Optional[int] = None
     colaborador_nome: Optional[str]
     custo: float
 
