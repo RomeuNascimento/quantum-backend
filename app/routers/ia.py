@@ -5,6 +5,7 @@ import os
 
 import anthropic
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth.utils import get_usuario_atual
@@ -135,6 +136,38 @@ REGRAS — RENDIMENTO:
 Retorne SOMENTE JSON válido, sem markdown:
 
 {"receitas": [{"nome": "Bolo de Chocolate", "tipo": "Massa", "rendimento_g": 800, "ingredientes": [{"nome": "farinha de trigo", "quantidade_g": 200, "unidade_original": "2 xícaras"}], "etapas_mo": [{"descricao": "Misture os ingredientes secos", "tempo_min": 5}]}]}"""
+
+
+# Limite de itens por chamada de estimativa (controle de custo/tamanho)
+ESTIMATIVA_MAX_ITENS = 50
+
+PROMPT_ESTIMATIVA = """Você é um especialista em preços de insumos de confeitaria/padaria no varejo BRASILEIRO.
+
+Para cada ingrediente da lista, estime o preço de uma EMBALAGEM comum vendida em
+supermercado/atacado no Brasil (preço médio nacional, marca comum, não premium).
+
+REGRAS:
+- "preco": preço médio em reais (número) de UMA embalagem padrão
+- "quantidade_embalagem": o tamanho dessa embalagem (número)
+- "unidade": a unidade da embalagem — use SOMENTE: "g", "kg", "ml", "L", "unid"
+- Escolha a embalagem mais vendida no varejo:
+  Ex: açúcar refinado → 1 kg, ~R$ 5,00 | farinha de trigo → 1 kg, ~R$ 5,00
+      ovo → 12 unid, ~R$ 9,00 | óleo de soja → 900 ml, ~R$ 7,50
+      leite condensado → 395 g, ~R$ 6,00 | chocolate em pó → 200 g, ~R$ 8,00
+- Se o nome estiver vago ou não for um insumo reconhecível, devolva preco: null
+- Estes são valores APROXIMADOS de referência — o usuário vai confirmar/ajustar
+
+Responda APENAS com JSON válido, sem markdown:
+
+{"itens": [{"nome": "açúcar refinado", "preco": 5.00, "quantidade_embalagem": 1, "unidade": "kg"}]}"""
+
+
+class IngredienteParaEstimar(BaseModel):
+    nome: str = Field(min_length=1, max_length=200)
+
+
+class EstimativaRequest(BaseModel):
+    ingredientes: list[IngredienteParaEstimar] = Field(min_length=1, max_length=ESTIMATIVA_MAX_ITENS)
 
 
 def _catalogo_usuario(db: Session, user_id: int) -> list[Ingrediente]:
@@ -317,6 +350,58 @@ def processar_receitas(
         data = _parse(resp, "receitas")
         data["receitas"] = [r for r in data["receitas"] if isinstance(r, dict)]
         return data
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/estimar-precos")
+def estimar_precos(
+    body: EstimativaRequest,
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
+    """Estima preço de mercado (BR) de uma embalagem padrão para cada ingrediente.
+
+    Conhecimento do modelo — valores APROXIMADOS, marcados como estimativa para
+    o usuário confirmar. Nunca substitui um preço real."""
+    _checar_rate_limit(user.id)
+    nomes = [i.nome.strip() for i in body.ingredientes if i.nome.strip()]
+    if not nomes:
+        raise HTTPException(status_code=422, detail="Nenhum ingrediente informado.")
+
+    lista = "\n".join(f"- {n}" for n in nomes)
+    prompt = f"{PROMPT_ESTIMATIVA}\n\nINGREDIENTES:\n{lista}{BLOCO_SEGURANCA}"
+    try:
+        resp = _client().messages.create(
+            model=_model(),
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        data = _parse(resp, "itens")
+        itens = []
+        for item in data["itens"]:
+            if not isinstance(item, dict):
+                continue
+            preco = item.get("preco")
+            qtd = item.get("quantidade_embalagem")
+            unidade = item.get("unidade")
+            # Descarta estimativas inválidas/incompletas (a IA devolve null p/ nome vago)
+            if not isinstance(preco, (int, float)) or preco <= 0:
+                continue
+            if not isinstance(qtd, (int, float)) or qtd <= 0:
+                continue
+            if unidade not in UNIDADES_VALIDAS:
+                unidade = "unid"
+            itens.append({
+                "nome": item.get("nome"),
+                "preco": float(preco),
+                "quantidade_embalagem": float(qtd),
+                "unidade": unidade,
+                "fonte": "estimativa",
+            })
+        return {"itens": itens}
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
     except anthropic.APIError as e:
