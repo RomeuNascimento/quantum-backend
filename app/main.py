@@ -16,6 +16,7 @@ from app.routers.precificacao import router as precificacao_router
 from app.routers.custos_fixos import router as custos_fixos_router
 from app.routers.colaboradores import router as colaboradores_router
 from app.routers.ia import router as ia_router
+from app.routers.assistente import router as assistente_router
 from app.routers.billing import router as billing_router, require_assinatura_ativa
 
 settings = get_settings()
@@ -60,6 +61,7 @@ app.include_router(precificacao_router, dependencies=_paywall)
 app.include_router(custos_fixos_router, dependencies=_paywall)
 app.include_router(colaboradores_router, dependencies=_paywall)
 app.include_router(ia_router, dependencies=_paywall)
+app.include_router(assistente_router, dependencies=_paywall)
 app.include_router(billing_router)
 
 
