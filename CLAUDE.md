@@ -3,9 +3,60 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-14 (branch `claude/keen-goldberg-m8aqqx` — **Água** como ingrediente neutro: semeada no register + garantida na 1ª listagem; sem preço → custo 0. SEM migration — só deploy do backend)
-**Penúltima:** 2026-06-13 — segurança esforço médio COMPLETA (`/docs` off · taxas canal < 100% · revogação JWT migration 008 · rate limiter Redis opcional)
-**Próxima sessão:** decisão OVO/ÓLEO por unidade vs peso (ver nota abaixo); alertas proativos de margem/preço; auditar ingredientes kg/L em produção; refresh token (JWT 30min); conferir X-Forwarded-For em produção
+**Última sessão:** 2026-06-21 (branch `claude/loving-fermat-s7fhsl` — **Assistente "cadastro guiado em 4 etapas" + Freemium**. Backend: `/assistente/salvar`, `/ia/estimar-precos`, `/ia/sugerir-embalagem`, tier grátis até N produtos (substitui paywall duro de 7d), script `comparar_modelos_ia.py`. SEM migration nova. ⚠️ DEPLOY pendente — ver "Sessão 2026-06-21" abaixo)
+**Penúltima:** 2026-06-14 — Água como ingrediente neutro (sem migration)
+**Próxima sessão:** rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** (migration 008 ainda pendente em produção!); refinar visual do assistente; cópia de `/assinatura` falar freemium; decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
+
+---
+
+## Sessão 2026-06-21 — Assistente (cadastro guiado) + Freemium
+
+> Branch `claude/loving-fermat-s7fhsl`. **SEM migration nova.** Reframe do produto: em vez
+> de cadastrar ingrediente→receita→produto→preço separados, um **assistente conversacional
+> de 4 etapas** faz tudo de uma vez. E o modelo de cobrança virou **freemium** (grátis até
+> N produtos) no lugar do trial de 7 dias com paywall duro.
+
+### Novos endpoints
+
+**`POST /assistente/salvar`** (`app/routers/assistente.py`) — **salvar tudo transacional.**
+Recebe um payload único (nome, tipo, rendimento_g, porcoes, margem_pct, etapas_mo[],
+ingredientes[], **embalagens[]**) e cria numa só transação: Receita + ReceitaIngrediente
+(criando Ingrediente + IngredientePreco quando não existe, match por nome normalizado) +
+ReceitaMOEtapa + Produto + ProdutoMassa (liga receita→produto, `quantidade_g =
+rendimento_g/porcoes`) + **Embalagem+EmbalagemPreco+ProdutoEmbalagem** (opcional) +
+ProdutoPreco no canal "Venda direta" (cria o canal se não existir, taxas 0). Tudo escopado
+ao `user_id`. Rollback automático em erro. Testes: `tests/test_assistente.py`.
+
+**`POST /ia/estimar-precos`** (`app/routers/ia.py`) — recebe lista de nomes de ingrediente,
+devolve `{itens:[{nome, preco, quantidade_embalagem, unidade, fonte:'estimativa'}]}` com
+**preço de mercado estimado (BR)** pelo conhecimento do modelo. Marcado `fonte:'estimativa'`
+(frontend mostra selo "EST" vermelho). Rate-limited. Testes: `tests/test_estimativa.py`.
+
+**`POST /ia/sugerir-embalagem`** — recebe nome do produto, devolve `{itens:[{nome, preco,
+quantidade_embalagem, quantidade_usada, fonte:'estimativa'}]}` (0–2 embalagens típicas).
+**Lista vazia é válida** (produto sem embalagem → 200, não 422 — parse tolerante próprio,
+não usa `_parse`). Custo da embalagem entra **por unidade** no produto.
+
+### Freemium (substitui o paywall duro de 7 dias)
+
+- `require_assinatura_ativa` agora **só conta produtos**: libera se `count(produtos) <
+  FREE_TIER_LIMIT` (default **3**, constante em `app/routers/billing.py`/onde aplicável)
+  OU assinatura ativa. Acima do limite sem assinar → HTTP 402.
+- **Não há mais bloqueio por tempo** — conta nova usa de graça pra sempre dentro do limite.
+- `GET /billing/status` devolve uso (`produtos_usados`, `limite_free`) pro banner do front.
+
+### Escolha de modelo de IA (custo)
+
+- `scripts/comparar_modelos_ia.py` — roda o mesmo prompt em Haiku/Sonnet/Opus lado a lado
+  (qualidade × custo × latência) pra decidir o `ANTHROPIC_MODEL`. **Rodar antes do deploy** —
+  o assistente faz várias chamadas de IA, Haiku pode cortar custo muito.
+
+### ⚠️ Pendências de deploy (usuário) — "deploy tudo junto"
+1. Rodar `comparar_modelos_ia.py` → setar `ANTHROPIC_MODEL` (provável Haiku) no EasyPanel.
+2. **`alembic upgrade head` (migration 008)** — segue PENDENTE de sessões anteriores
+   (revogação JWT). Esta sessão NÃO adiciona migration, mas a 008 precisa entrar.
+3. Disparar deploy `backend` + `frontend` no EasyPanel (gatilho manual do usuário).
+4. **47 testes passando** (`DATABASE_URL=sqlite:// JWT_SECRET=test python -m pytest tests/ -q`).
 
 ---
 
