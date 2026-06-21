@@ -65,3 +65,22 @@ def test_estimar_precos_body_vazio_422(client, auth):
 def test_estimar_precos_exige_auth(client):
     r = client.post("/ia/estimar-precos", json={"ingredientes": [{"nome": "x"}]})
     assert r.status_code == 401
+
+
+def test_sugerir_embalagem_feliz(client, auth):
+    itens = [{"nome": "caixa para bolo", "preco": 25.0, "quantidade_embalagem": 10, "quantidade_usada": 1}]
+    with patch.object(ia, "_client") as m:
+        m.return_value.messages.create.return_value = _fake_resp(itens)
+        r = client.post("/ia/sugerir-embalagem", headers=auth, json={"produto": "Bolo de Cenoura"})
+    assert r.status_code == 200
+    d = r.json()["itens"]
+    assert len(d) == 1 and d[0]["fonte"] == "estimativa" and d[0]["quantidade_usada"] == 1
+
+
+def test_sugerir_embalagem_vazio_ok(client, auth):
+    # produto sem embalagem -> lista vazia (200, não 422)
+    with patch.object(ia, "_client") as m:
+        m.return_value.messages.create.return_value = _fake_resp([])
+        r = client.post("/ia/sugerir-embalagem", headers=auth, json={"produto": "Café"})
+    assert r.status_code == 200
+    assert r.json()["itens"] == []

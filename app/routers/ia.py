@@ -170,6 +170,30 @@ class EstimativaRequest(BaseModel):
     ingredientes: list[IngredienteParaEstimar] = Field(min_length=1, max_length=ESTIMATIVA_MAX_ITENS)
 
 
+class SugerirEmbalagemRequest(BaseModel):
+    produto: str = Field(min_length=1, max_length=200)
+
+
+PROMPT_EMBALAGEM = """Você é especialista em embalagens de confeitaria/padaria no varejo BRASILEIRO.
+
+Para o PRODUTO informado, sugira de 0 a 2 embalagens típicas de venda (ex.: caixa de
+bolo, forminha, pote, saco). Se o produto normalmente não leva embalagem, devolva lista vazia.
+
+Para cada embalagem:
+- "nome": nome curto e genérico (ex: "caixa para bolo", "forminha de brigadeiro")
+- "preco": preço de UM pacote no varejo (R$, número)
+- "quantidade_embalagem": quantas unidades vêm nesse pacote (número)
+  Ex: forminhas costumam vir em pacote de 100; caixa de bolo costuma ser vendida avulsa (1)
+- "quantidade_usada": quantas unidades a embalagem é usada por UMA unidade do produto
+  (ex: 1 caixa por bolo; 1 forminha por brigadeiro)
+
+São valores APROXIMADOS de referência — o usuário confirma/ajusta.
+
+Responda APENAS com JSON válido, sem markdown:
+
+{"itens": [{"nome": "caixa para bolo", "preco": 25.0, "quantidade_embalagem": 10, "quantidade_usada": 1}]}"""
+
+
 def _catalogo_usuario(db: Session, user_id: int) -> list[Ingrediente]:
     """Ingredientes ativos do usuário para injetar como catálogo no prompt."""
     return (
@@ -399,6 +423,57 @@ def estimar_precos(
                 "preco": float(preco),
                 "quantidade_embalagem": float(qtd),
                 "unidade": unidade,
+                "fonte": "estimativa",
+            })
+        return {"itens": itens}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/sugerir-embalagem")
+def sugerir_embalagem(
+    body: SugerirEmbalagemRequest,
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
+    """Sugere embalagem(ns) provável(is) de um produto, com preço estimado (BR).
+
+    Conhecimento do modelo — valores aproximados marcados como estimativa."""
+    _checar_rate_limit(user.id)
+    prompt = f"{PROMPT_EMBALAGEM}\n\nPRODUTO: {body.produto.strip()}{BLOCO_SEGURANCA}"
+    try:
+        resp = _client().messages.create(
+            model=_model(), max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        # parse tolerante: lista vazia é válida (produto sem embalagem)
+        if not resp.content or not hasattr(resp.content[0], "text"):
+            return {"itens": []}
+        texto = resp.content[0].text.strip()
+        if texto.startswith("```"):
+            linhas = texto.splitlines()
+            texto = "\n".join(linhas[1:-1] if linhas[-1].strip() == "```" else linhas[1:])
+        data = json.loads(texto.strip())
+        if not isinstance(data, dict) or not isinstance(data.get("itens"), list):
+            return {"itens": []}
+        itens = []
+        for item in data["itens"]:
+            if not isinstance(item, dict):
+                continue
+            preco = item.get("preco")
+            qtd = item.get("quantidade_embalagem")
+            if not isinstance(preco, (int, float)) or preco <= 0:
+                continue
+            if not isinstance(qtd, (int, float)) or qtd <= 0:
+                continue
+            usada = item.get("quantidade_usada")
+            itens.append({
+                "nome": item.get("nome"),
+                "preco": float(preco),
+                "quantidade_embalagem": float(qtd),
+                "quantidade_usada": float(usada) if isinstance(usada, (int, float)) and usada > 0 else 1.0,
                 "fonte": "estimativa",
             })
         return {"itens": itens}

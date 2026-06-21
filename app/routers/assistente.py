@@ -23,8 +23,9 @@ from sqlalchemy.orm import Session
 from app.auth.utils import get_usuario_atual
 from app.database import get_db
 from app.models.models import (
-    Canal, Ingrediente, IngredientePreco, OrigemEnum, Produto, ProdutoMassa,
-    ProdutoPreco, Receita, ReceitaIngrediente, ReceitaMOEtapa, UnidadeEnum, User,
+    Canal, Embalagem, EmbalagemPreco, Ingrediente, IngredientePreco, OrigemEnum,
+    Produto, ProdutoEmbalagem, ProdutoMassa, ProdutoPreco, Receita,
+    ReceitaIngrediente, ReceitaMOEtapa, UnidadeEnum, User,
 )
 from app.routers.ownership import validar_ids_do_usuario
 from app.routers.billing import garantir_limite_produtos
@@ -49,6 +50,13 @@ class EtapaAssistente(BaseModel):
     tempo_min: float = Field(ge=0)
 
 
+class EmbalagemAssistente(BaseModel):
+    nome: str = Field(min_length=1, max_length=150)
+    preco: float = Field(gt=0)
+    quantidade_embalagem: float = Field(default=1, gt=0)  # qtd no pacote comprado
+    quantidade_usada: float = Field(default=1, gt=0)       # qtd por unidade do produto
+
+
 class SalvarAssistenteRequest(BaseModel):
     nome: str = Field(min_length=1, max_length=150)
     tipo: Optional[str] = Field(default=None, max_length=100)
@@ -57,6 +65,7 @@ class SalvarAssistenteRequest(BaseModel):
     margem_pct: float = Field(ge=0, lt=100)
     etapas_mo: List[EtapaAssistente] = []  # vazio = sem mão de obra
     ingredientes: List[IngredienteAssistente] = Field(min_length=1)
+    embalagens: List[EmbalagemAssistente] = []  # opcional
 
 
 class SalvarAssistenteResposta(BaseModel):
@@ -135,6 +144,18 @@ def salvar(
     db.flush()
     qtd_por_unidade = dados.rendimento_g / dados.porcoes
     db.add(ProdutoMassa(produto_id=produto.id, receita_id=receita.id, quantidade_g=qtd_por_unidade))
+
+    # 3b) Embalagens (opcional): cria embalagem + preço + vínculo com o produto
+    for emb in dados.embalagens:
+        embalagem = Embalagem(user_id=user.id, nome=emb.nome, unidade=UnidadeEnum.unid)
+        db.add(embalagem)
+        db.flush()
+        db.add(EmbalagemPreco(
+            embalagem_id=embalagem.id, preco=emb.preco,
+            quantidade_embalagem=emb.quantidade_embalagem, data_compra=agora,
+            origem=OrigemEnum.manual,
+        ))
+        db.add(ProdutoEmbalagem(produto_id=produto.id, embalagem_id=embalagem.id, quantidade=emb.quantidade_usada))
 
     # 4) Precificação no canal "Venda direta"
     canal = _get_ou_cria_venda_direta(db, user.id)

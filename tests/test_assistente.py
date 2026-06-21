@@ -121,3 +121,21 @@ def test_salvar_ingrediente_de_outro_usuario_404(client, auth):
 def test_salvar_exige_auth(client):
     r = client.post("/assistente/salvar", json=_payload())
     assert r.status_code == 401
+
+
+def test_salvar_com_embalagem(client, auth):
+    from app.models.models import Embalagem, ProdutoEmbalagem
+    payload = _payload(nome="Bolo Emb", embalagens=[
+        {"nome": "caixa para bolo", "preco": 2.50, "quantidade_embalagem": 1, "quantidade_usada": 1},
+    ])
+    r = client.post("/assistente/salvar", headers=auth, json=payload)
+    assert r.status_code == 201, r.text
+    db = TestingSession()
+    try:
+        emb = db.query(Embalagem).filter(Embalagem.nome == "caixa para bolo").first()
+        assert emb is not None and emb.unidade.value == "unid"
+        pe = db.query(ProdutoEmbalagem).filter(
+            ProdutoEmbalagem.produto_id == r.json()["produto_id"]).first()
+        assert pe is not None and pe.quantidade == 1
+    finally:
+        db.close()
