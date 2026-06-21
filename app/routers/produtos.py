@@ -18,6 +18,7 @@ from app.schemas.produtos import (
 )
 from app.routers.receitas import calcular_receita, get_valor_hora_padrao, custo_unitario_ingrediente
 from app.routers.ownership import validar_ids_do_usuario
+from app.routers.billing import garantir_limite_produtos
 from app.routers.custos import custo_unitario_de_preco, custo_unitario_embalagem_de_preco, preco_mais_recente
 
 router = APIRouter(prefix="/produtos", tags=["Produtos"])
@@ -150,6 +151,7 @@ def criar(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
+    garantir_limite_produtos(user, db)  # freemium: tier grátis até N produtos
     _validar_componentes(db, user, dados.preparacoes, dados.ingredientes, dados.embalagens, dados.mo_montagem)
 
     produto = Produto(user_id=user.id, nome=dados.nome)

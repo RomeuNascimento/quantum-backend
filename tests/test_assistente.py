@@ -7,7 +7,7 @@ contagem; ownership; rollback em erro.
 import pytest
 
 from app.models.models import (
-    Canal, Ingrediente, Produto, ProdutoMassa, ProdutoPreco, Receita,
+    Canal, Ingrediente, Produto, ProdutoMassa, ProdutoPreco, Receita, User,
 )
 from tests.db import TestingSession
 
@@ -18,6 +18,12 @@ def auth(client):
         "nome": "Assist", "email": "assistente@test.com", "senha": "senha12345",
     })
     assert r.status_code == 201, r.text
+    # marca como pago: estes testes criam vários produtos (não são sobre freemium)
+    db = TestingSession()
+    u = db.query(User).filter(User.email == "assistente@test.com").first()
+    u.assinatura_status = "ativa"
+    db.commit()
+    db.close()
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 

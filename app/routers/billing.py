@@ -22,12 +22,17 @@ from typing import Literal, Optional
 
 from app.auth.utils import get_usuario_atual
 from app.database import get_db
-from app.models.models import StripeEvent, User
+from app.models.models import Produto, StripeEvent, User
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
 TRIAL_DIAS = 7
+
+# Freemium: o tier grátis permite até N produtos ativos. Pago = ilimitado.
+# O assistente e todo o resto do app ficam liberados no grátis (a "isca"); o
+# único gate é a criação do (N+1)-ésimo produto.
+LIMITE_PRODUTOS_FREE = 3
 
 
 def _stripe():
@@ -62,9 +67,25 @@ def status_efetivo(user: User) -> str:
     return "vencida"
 
 
+def plano_pago(user: User) -> bool:
+    """Assinatura paga e vigente (acesso ilimitado). Trial/vencida = tier grátis."""
+    return status_efetivo(user) == "ativa"
+
+
+def contar_produtos_ativos(db: Session, user_id: int) -> int:
+    return db.query(Produto).filter(Produto.user_id == user_id, Produto.ativo == True).count()  # noqa: E712
+
+
 @router.get("/status")
-def billing_status(user: User = Depends(get_usuario_atual)):
+def billing_status(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db)):
+    pago = plano_pago(user)
+    usados = contar_produtos_ativos(db, user.id)
     return {
+        # 'pago' = ilimitado; 'gratis' = capado por produtos
+        "plano": "pago" if pago else "gratis",
+        "produtos_usados": usados,
+        "produtos_limite": None if pago else LIMITE_PRODUTOS_FREE,
+        # campos legados mantidos para compat com clientes antigos
         "status": status_efetivo(user),
         "trial_fim": _trial_fim(user).isoformat() if user.assinatura_status == "trial" else None,
         "validade": user.assinatura_validade.isoformat() if user.assinatura_validade else None,
@@ -215,11 +236,18 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     return {"received": True}
 
 
-def require_assinatura_ativa(user: User = Depends(get_usuario_atual)) -> User:
-    """Dependency: bloqueia rotas de negócio se a assinatura estiver vencida."""
-    if status_efetivo(user) == "vencida":
+def garantir_limite_produtos(user: User, db: Session) -> None:
+    """Freemium: bloqueia criar produto além do limite grátis (402). Pago = ilimitado.
+
+    Chamado na criação de produto (produtos.criar e assistente.salvar) — não é um
+    paywall global; o resto do app fica liberado no tier grátis."""
+    if plano_pago(user):
+        return
+    if contar_produtos_ativos(db, user.id) >= LIMITE_PRODUTOS_FREE:
         raise HTTPException(
             status_code=402,
-            detail="Assinatura vencida. Acesse /assinatura para renovar.",
+            detail=(
+                f"Plano grátis permite até {LIMITE_PRODUTOS_FREE} produtos. "
+                "Assine para criar produtos ilimitados."
+            ),
         )
-    return user

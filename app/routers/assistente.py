@@ -27,6 +27,7 @@ from app.models.models import (
     ProdutoPreco, Receita, ReceitaIngrediente, ReceitaMOEtapa, UnidadeEnum, User,
 )
 from app.routers.ownership import validar_ids_do_usuario
+from app.routers.billing import garantir_limite_produtos
 
 router = APIRouter(prefix="/assistente", tags=["Assistente"])
 
@@ -87,6 +88,7 @@ def salvar(
     user: User = Depends(get_usuario_atual),
     db: Session = Depends(get_db),
 ):
+    garantir_limite_produtos(user, db)  # freemium: tier grátis até N produtos
     # Ownership dos ingredientes existentes referenciados
     ids_existentes = [i.ingrediente_id for i in dados.ingredientes if i.ingrediente_id]
     validar_ids_do_usuario(db, Ingrediente, ids_existentes, user.id, "Ingrediente")

@@ -17,7 +17,7 @@ from app.routers.custos_fixos import router as custos_fixos_router
 from app.routers.colaboradores import router as colaboradores_router
 from app.routers.ia import router as ia_router
 from app.routers.assistente import router as assistente_router
-from app.routers.billing import router as billing_router, require_assinatura_ativa
+from app.routers.billing import router as billing_router
 
 settings = get_settings()
 
@@ -50,18 +50,18 @@ async def generic_exception_handler(request: Request, exc: Exception):
     )
 
 
-_paywall = [Depends(require_assinatura_ativa)]
-
+# Freemium: sem paywall global — o tier grátis usa o app livremente. O único
+# gate é o limite de produtos, aplicado na criação (produtos.criar / assistente.salvar).
 app.include_router(auth_router)
-app.include_router(ingredientes_router, dependencies=_paywall)
-app.include_router(embalagens_router, dependencies=_paywall)
-app.include_router(receitas_router, dependencies=_paywall)
-app.include_router(produtos_router, dependencies=_paywall)
-app.include_router(precificacao_router, dependencies=_paywall)
-app.include_router(custos_fixos_router, dependencies=_paywall)
-app.include_router(colaboradores_router, dependencies=_paywall)
-app.include_router(ia_router, dependencies=_paywall)
-app.include_router(assistente_router, dependencies=_paywall)
+app.include_router(ingredientes_router)
+app.include_router(embalagens_router)
+app.include_router(receitas_router)
+app.include_router(produtos_router)
+app.include_router(precificacao_router)
+app.include_router(custos_fixos_router)
+app.include_router(colaboradores_router)
+app.include_router(ia_router)
+app.include_router(assistente_router)
 app.include_router(billing_router)
 
 

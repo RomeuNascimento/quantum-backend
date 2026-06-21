@@ -80,35 +80,59 @@ def test_status_endpoint_trial(client, auth):
     assert body["trial_fim"] is not None
 
 
-def test_paywall_libera_trial(client, auth):
-    r = client.get("/ingredientes/", headers=auth)
-    assert r.status_code == 200
+# ---------- Freemium: sem paywall global; gate por nº de produtos ----------
+
+from app.models.models import Produto
+from app.routers.billing import garantir_limite_produtos, LIMITE_PRODUTOS_FREE
+from fastapi import HTTPException
 
 
-def test_paywall_bloqueia_vencida(client, auth):
+def test_free_usa_o_app_livremente(client, auth):
+    """Tier grátis (mesmo 'vencida') NÃO é bloqueado nas rotas de negócio."""
     _set_user("billing@test.com", assinatura_status="vencida")
-    r = client.get("/ingredientes/", headers=auth)
-    assert r.status_code == 402
-    # todas as rotas de negócio bloqueadas, não só ingredientes
-    assert client.get("/produtos/", headers=auth).status_code == 402
-    assert client.get("/receitas/", headers=auth).status_code == 402
-
-
-def test_paywall_nao_bloqueia_billing_nem_auth(client, auth):
-    # usuário vencido ainda acessa status (para ver a tela de assinatura) e o /me
-    assert client.get("/billing/status", headers=auth).status_code == 200
-    assert client.get("/auth/me", headers=auth).status_code == 200
-
-
-def test_paywall_libera_apos_reativacao(client, auth):
-    _set_user(
-        "billing@test.com",
-        assinatura_status="ativa",
-        assinatura_validade=datetime.utcnow() + timedelta(days=365),
-    )
     assert client.get("/ingredientes/", headers=auth).status_code == 200
+    assert client.get("/produtos/", headers=auth).status_code == 200
+    assert client.get("/receitas/", headers=auth).status_code == 200
+
+
+def _criar_produtos(email, n):
+    db = TestingSession()
+    user = db.query(User).filter(User.email == email).first()
+    for i in range(n):
+        db.add(Produto(user_id=user.id, nome=f"P{i}", ativo=True))
+    db.commit()
+    db.close()
+
+
+def test_freemium_gate_bloqueia_no_limite(client, auth):
+    """Grátis: cria até o limite; o (N+1)-ésimo é bloqueado (402)."""
+    _set_user("billing@test.com", assinatura_status="vencida")
+    _criar_produtos("billing@test.com", LIMITE_PRODUTOS_FREE)
+    db = TestingSession()
+    user = db.query(User).filter(User.email == "billing@test.com").first()
+    with pytest.raises(HTTPException) as ei:
+        garantir_limite_produtos(user, db)
+    assert ei.value.status_code == 402
+    db.close()
+
+
+def test_freemium_pago_e_ilimitado(client, auth):
+    """Pago: sem limite, mesmo acima de N produtos."""
+    _set_user("billing@test.com", assinatura_status="ativa",
+              assinatura_validade=datetime.utcnow() + timedelta(days=365))
+    db = TestingSession()
+    user = db.query(User).filter(User.email == "billing@test.com").first()
+    garantir_limite_produtos(user, db)  # não levanta
+    db.close()
+
+
+def test_status_traz_campos_freemium(client, auth):
+    _set_user("billing@test.com", assinatura_status="ativa",
+              assinatura_validade=datetime.utcnow() + timedelta(days=365))
     body = client.get("/billing/status", headers=auth).json()
-    assert body["status"] == "ativa"
+    assert body["plano"] == "pago"
+    assert body["produtos_limite"] is None
+    assert "produtos_usados" in body
 
 
 # ---------- webhook: idempotência (Stripe entrega at-least-once) ----------
