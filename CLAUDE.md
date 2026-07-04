@@ -3,9 +3,31 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-06-21 (branch `claude/loving-fermat-s7fhsl` — **Assistente "cadastro guiado em 4 etapas" + Freemium**. Backend: `/assistente/salvar`, `/ia/estimar-precos`, `/ia/sugerir-embalagem`, tier grátis até N produtos (substitui paywall duro de 7d), script `comparar_modelos_ia.py`. SEM migration nova. ⚠️ DEPLOY pendente — ver "Sessão 2026-06-21" abaixo)
-**Penúltima:** 2026-06-14 — Água como ingrediente neutro (sem migration)
-**Próxima sessão:** rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** (migration 008 ainda pendente em produção!); refinar visual do assistente; cópia de `/assinatura` falar freemium; decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
+**Última sessão:** 2026-07-03 (branch `claude/simplicidade-reset-senha` — **Recuperação de senha por e-mail** (`/auth/esqueci-senha` + `/auth/redefinir-senha`), módulo `app/email.py` (SMTP), settings SMTP_* novas. SEM migration nova. ⚠️ SMTP_* precisa ser configurado no EasyPanel para o e-mail sair)
+**Penúltima:** 2026-06-21 — Assistente (cadastro guiado em 4 etapas) + Freemium (⚠️ DEPLOY ainda pendente)
+**Próxima sessão:** rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** (migration 008 ainda pendente em produção!); configurar SMTP_* no EasyPanel; decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
+
+---
+
+## Sessão 2026-07-03 — Recuperação de senha por e-mail
+
+> Branch `claude/simplicidade-reset-senha`. **SEM migration** — usa `token_version`
+> (migration 008) que JÁ PRECISA entrar em produção de qualquer forma.
+
+- **`POST /auth/esqueci-senha`** `{email}` — sempre 200 com a mesma mensagem
+  (anti-enumeração); se a conta existe, envia e-mail (BackgroundTasks) com link
+  `FRONTEND_URL/redefinir-senha?token=...`. Rate limit 3/h por IP (`_reset_limiter`).
+- **`POST /auth/redefinir-senha`** `{token, nova_senha}` — valida `purpose=reset` +
+  `tv == token_version` (uso único), troca a senha, bumpa `token_version` (derruba
+  sessões antigas E o próprio token) e **devolve sessão nova** (pessoa entra direto).
+- **`criar_token_reset()`** em `auth/utils.py`; `get_usuario_atual` rejeita token com
+  `purpose` (link de e-mail não vale como sessão). Erros do reset → 400 amigável.
+- **`app/email.py`** — SMTP simples (starttls). Sem `SMTP_HOST/USER/PASSWORD` setados,
+  responde 200 e só loga aviso (não quebra). Settings novas: `smtp_host`, `smtp_port`,
+  `smtp_user`, `smtp_password`, `smtp_from`, `frontend_url` (ver `.env.example`).
+- Testes: `tests/test_reset_senha.py` (6) — fluxo completo, anti-enumeração, uso único,
+  derruba sessões, purpose não autentica, token lixo → 400. **Suíte: 53 passando.**
+- ⚠️ Deploy: configurar `SMTP_*` no EasyPanel (senão o "esqueci a senha" não envia nada).
 
 ---
 

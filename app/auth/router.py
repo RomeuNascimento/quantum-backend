@@ -1,17 +1,18 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from app.database import get_db
+from app.database import get_db, get_settings
+from app.email import enviar_email
 from app.models.models import User, Configuracao, Canal, RevokedToken, Ingrediente, UnidadeEnum
 from app.auth.schemas import (
     UserCreate, UserLogin, Token, UserOut, ConfiguracaoOut, ConfiguracaoUpdate,
-    AlterarSenha,
+    AlterarSenha, EsqueciSenha, RedefinirSenha,
 )
 from app.auth.utils import (
-    hash_senha, verificar_senha, criar_token_usuario, get_usuario_atual,
-    decodificar_token, oauth2_scheme,
+    hash_senha, verificar_senha, criar_token_usuario, criar_token_reset,
+    get_usuario_atual, decodificar_token, oauth2_scheme,
 )
 from app.ratelimit import RateLimiter
 
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/auth", tags=["Autenticação"])
 
 _login_limiter = RateLimiter(10, 300, "Muitas tentativas de login. Aguarde alguns minutos.")
 _register_limiter = RateLimiter(5, 3600, "Muitas contas criadas a partir deste endereço. Tente mais tarde.")
+_reset_limiter = RateLimiter(3, 3600, "Muitos pedidos de recuperação. Tente novamente mais tarde.")
 
 
 def _ip(request: Request) -> str:
@@ -96,6 +98,87 @@ def login(dados: UserLogin, request: Request, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="E-mail ou senha incorretos",
         )
+    return Token(access_token=criar_token_usuario(user))
+
+
+# Mensagem única (o e-mail existindo ou não) — anti-enumeração.
+_MSG_RESET_ENVIADO = (
+    "Se este e-mail estiver cadastrado, enviamos um link para criar uma senha nova. "
+    "Olhe sua caixa de entrada e o spam."
+)
+
+
+def _email_reset_html(nome: str, link: str) -> str:
+    primeiro_nome = (nome or "").split(" ")[0] or "confeiteiro(a)"
+    return f"""
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #0B0B0F;">Quantum</h2>
+      <p style="font-size: 16px; color: #0B0B0F;">Oi, {primeiro_nome}!</p>
+      <p style="font-size: 16px; color: #0B0B0F;">
+        Você pediu para criar uma <strong>senha nova</strong> no Quantum.
+        É só apertar o botão abaixo:
+      </p>
+      <p style="margin: 28px 0;">
+        <a href="{link}" style="background: #D6FF3F; color: #0B0B0F; padding: 14px 28px;
+           text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block;">
+          CRIAR SENHA NOVA
+        </a>
+      </p>
+      <p style="font-size: 14px; color: #5A584F;">
+        O link vale por 30 minutos. Se não foi você que pediu, pode ignorar
+        este e-mail — sua senha continua a mesma.
+      </p>
+    </div>
+    """
+
+
+@router.post("/esqueci-senha")
+def esqueci_senha(
+    dados: EsqueciSenha,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Envia (em background) o link de redefinição. Resposta idêntica com e-mail
+    existente ou não — não revela quem tem conta (anti-enumeração)."""
+    _reset_limiter.checar(_ip(request))
+    user = db.query(User).filter(User.email == dados.email).first()
+    if user:
+        settings = get_settings()
+        link = f"{settings.frontend_url.rstrip('/')}/redefinir-senha?token={criar_token_reset(user)}"
+        background.add_task(
+            enviar_email, user.email, "Quantum — criar senha nova", _email_reset_html(user.nome, link)
+        )
+    return {"detail": _MSG_RESET_ENVIADO}
+
+
+@router.post("/redefinir-senha", response_model=Token)
+def redefinir_senha(dados: RedefinirSenha, db: Session = Depends(get_db)):
+    """Troca a senha a partir do token do e-mail (uso único, expira em 30min)
+    e já devolve uma sessão nova — a pessoa entra direto, sem redigitar."""
+    token_invalido = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Este link já foi usado ou venceu. Peça um novo em 'Esqueci minha senha'.",
+    )
+    try:
+        payload = decodificar_token(dados.token)
+    except HTTPException:
+        raise token_invalido  # mensagem amigável no lugar do 401 genérico
+    if payload.get("purpose") != "reset":
+        raise token_invalido
+    try:
+        user_id = int(payload.get("sub"))
+    except (TypeError, ValueError):
+        raise token_invalido
+    user = db.query(User).filter(User.id == user_id).first()
+    # tv desatualizado = senha já trocada depois da emissão (link de uso único)
+    if user is None or payload.get("tv", 0) != user.token_version:
+        raise token_invalido
+
+    user.senha_hash = hash_senha(dados.nova_senha)
+    user.token_version += 1  # derruba sessões antigas E invalida este token
+    db.commit()
+    db.refresh(user)
     return Token(access_token=criar_token_usuario(user))
 
 

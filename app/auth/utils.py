@@ -41,6 +41,13 @@ def criar_token_usuario(user: User) -> str:
     return criar_token({"sub": str(user.id), "tv": user.token_version})
 
 
+def criar_token_reset(user: User) -> str:
+    """Token de recuperação de senha (link do e-mail). `purpose: reset` impede
+    o uso como sessão (get_usuario_atual rejeita); `tv` o torna de uso único —
+    o reset bumpa token_version, invalidando o próprio token que o executou."""
+    return criar_token({"sub": str(user.id), "tv": user.token_version, "purpose": "reset"})
+
+
 def decodificar_token(token: str) -> dict:
     """Decodifica e valida assinatura/expiração. Não checa revogação."""
     try:
@@ -55,6 +62,9 @@ def get_usuario_atual(
     db: Session = Depends(get_db),
 ) -> User:
     payload = decodificar_token(token)
+    # Tokens com propósito especial (ex.: reset de senha) não valem como sessão.
+    if payload.get("purpose"):
+        raise CREDENCIAL_INVALIDA
     try:
         user_id = int(payload.get("sub"))
     except (TypeError, ValueError):

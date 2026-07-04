@@ -25,6 +25,16 @@ class AlterarSenha(BaseModel):
     senha_nova: str = Field(min_length=8, max_length=72)
 
 
+class EsqueciSenha(BaseModel):
+    email: EmailStr
+
+
+class RedefinirSenha(BaseModel):
+    token: str
+    # max 72: bcrypt trunca silenciosamente acima disso
+    nova_senha: str = Field(min_length=8, max_length=72)
+
+
 class UserOut(BaseModel):
     id: int
     nome: str

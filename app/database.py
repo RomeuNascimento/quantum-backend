@@ -13,6 +13,14 @@ class Settings(BaseSettings):
     enable_docs: bool = False  # Swagger/ReDoc/OpenAPI expostos só se True (default: off em produção)
     # Rate limit distribuído: se vazio, usa memória (só vale com 1 worker).
     redis_url: str = ""
+    # E-mail transacional (recuperação de senha). Sem SMTP configurado, o
+    # endpoint /auth/esqueci-senha responde 200 mas não envia nada (loga aviso).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    frontend_url: str = "https://quantumcalc.com.br"
 
     class Config:
         env_file = ".env"
