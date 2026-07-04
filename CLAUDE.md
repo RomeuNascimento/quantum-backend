@@ -5,7 +5,11 @@
 **Criado em:** 2026-05-20
 **Última sessão:** 2026-07-03 (branch `claude/simplicidade-reset-senha` — **Recuperação de senha por e-mail** (`/auth/esqueci-senha` + `/auth/redefinir-senha`), módulo `app/email.py` (SMTP), settings SMTP_* novas. SEM migration nova. ⚠️ SMTP_* precisa ser configurado no EasyPanel para o e-mail sair)
 **Penúltima:** 2026-06-21 — Assistente (cadastro guiado em 4 etapas) + Freemium (⚠️ DEPLOY ainda pendente)
-**Próxima sessão:** rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** (migration 008 ainda pendente em produção!); configurar SMTP_* no EasyPanel; decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
+**Próxima sessão:** rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** backend+frontend (liberado — migration 008 JÁ APLICADA, ver abaixo); configurar SMTP_* no EasyPanel; renovar token do MCP easypanel (o de `.claude/settings.json` expirou); decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
+
+> ✅ **Migration 008 CONFIRMADA em produção (2026-07-03)** — `alembic current` = 008,
+> `users.token_version` e `revoked_tokens` verificados direto no banco. O deploy do
+> backend está destravado. (Avisos de "008 pendente" abaixo estão desatualizados.)
 
 ---
 
