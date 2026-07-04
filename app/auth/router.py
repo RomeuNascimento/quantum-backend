@@ -1,3 +1,4 @@
+import html
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -21,6 +22,9 @@ router = APIRouter(prefix="/auth", tags=["Autenticação"])
 _login_limiter = RateLimiter(10, 300, "Muitas tentativas de login. Aguarde alguns minutos.")
 _register_limiter = RateLimiter(5, 3600, "Muitas contas criadas a partir deste endereço. Tente mais tarde.")
 _reset_limiter = RateLimiter(3, 3600, "Muitos pedidos de recuperação. Tente novamente mais tarde.")
+# Também por e-mail ALVO: sem isto, um atacante com muitos IPs consegue inundar
+# a caixa de entrada de uma vítima com e-mails de reset.
+_reset_email_limiter = RateLimiter(3, 3600, "Muitos pedidos de recuperação. Tente novamente mais tarde.")
 
 
 def _ip(request: Request) -> str:
@@ -109,7 +113,8 @@ _MSG_RESET_ENVIADO = (
 
 
 def _email_reset_html(nome: str, link: str) -> str:
-    primeiro_nome = (nome or "").split(" ")[0] or "confeiteiro(a)"
+    # escape: o nome é controlado pelo usuário — sem isso, HTML no nome injeta no e-mail
+    primeiro_nome = html.escape((nome or "").split(" ")[0] or "confeiteiro(a)")
     return f"""
     <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
       <h2 style="color: #0B0B0F;">Quantum</h2>
@@ -142,6 +147,7 @@ def esqueci_senha(
     """Envia (em background) o link de redefinição. Resposta idêntica com e-mail
     existente ou não — não revela quem tem conta (anti-enumeração)."""
     _reset_limiter.checar(_ip(request))
+    _reset_email_limiter.checar(dados.email.lower())
     user = db.query(User).filter(User.email == dados.email).first()
     if user:
         settings = get_settings()

@@ -28,9 +28,12 @@ def _reset_rate_limiters():
     estado vaza entre módulos de teste (mesmo IP), podendo disparar 429 em
     testes que não têm a ver com rate limiting. Zera os buckets a cada módulo
     para a suíte ficar independente de ordem."""
-    from app.auth.router import _login_limiter, _register_limiter, _reset_limiter
+    from app.auth.router import (
+        _login_limiter, _register_limiter, _reset_limiter, _reset_email_limiter,
+    )
     from app.routers.ia import _ia_limiter
-    for limiter in (_login_limiter, _register_limiter, _reset_limiter, _ia_limiter):
+    for limiter in (_login_limiter, _register_limiter, _reset_limiter,
+                    _reset_email_limiter, _ia_limiter):
         limiter._hits.clear()
     yield
 

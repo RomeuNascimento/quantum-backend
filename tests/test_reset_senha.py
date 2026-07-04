@@ -19,8 +19,10 @@ def _h(token):
 
 @pytest.fixture(autouse=True)
 def _zera_reset_limiter():
-    """O limite é 3 pedidos/hora por IP — os testes deste módulo passam disso."""
+    """Os limites (3 resets/h, 5 registros/h por IP) estouram dentro do módulo."""
     auth_router._reset_limiter._hits.clear()
+    auth_router._reset_email_limiter._hits.clear()
+    auth_router._register_limiter._hits.clear()
     yield
 
 
@@ -105,3 +107,27 @@ def test_token_lixo_da_400_amigavel(client):
     r = client.post("/auth/redefinir-senha", json={"token": "lixo.invalido.aqui", "nova_senha": "senhaBoa123"})
     assert r.status_code == 400
     assert "link" in r.json()["detail"].lower()
+
+
+def test_nome_com_html_e_escapado_no_email(client, captura_email):
+    """Nome de usuário é controlado por ele — não pode injetar HTML no e-mail."""
+    r = client.post("/auth/register", json={
+        "nome": "<img src=x onerror=alert(1)> Maria", "email": "xss@test.com", "senha": "senha12345",
+    })
+    assert r.status_code == 201
+    client.post("/auth/esqueci-senha", json={"email": "xss@test.com"})
+    html_corpo = captura_email[0]["html"]
+    assert "<img" not in html_corpo
+    assert "&lt;img" in html_corpo
+
+
+def test_flood_por_email_alvo_bloqueado(client, captura_email, monkeypatch):
+    """Mesmo variando o IP, o 4º pedido para o MESMO e-mail em 1h leva 429."""
+    _registrar(client, "vitima@test.com")
+    ips = iter([f"10.0.0.{i}" for i in range(1, 10)])
+    monkeypatch.setattr(auth_router, "_ip", lambda request: next(ips))
+    for _ in range(3):
+        assert client.post("/auth/esqueci-senha", json={"email": "vitima@test.com"}).status_code == 200
+    r = client.post("/auth/esqueci-senha", json={"email": "vitima@test.com"})
+    assert r.status_code == 429
+    assert len(captura_email) == 3
