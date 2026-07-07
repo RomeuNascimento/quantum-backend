@@ -52,6 +52,12 @@ não usa `_parse`). Custo da embalagem entra **por unidade** no produto.
   o assistente faz várias chamadas de IA, Haiku pode cortar custo muito.
 
 ### ⚠️ Pendências de deploy (usuário) — "deploy tudo junto"
+
+> **2026-06-21 (fim da sessão):** os 6 commits da branch `claude/loving-fermat-s7fhsl`
+> foram **mergeados no `main`** (fast-forward limpo, `main` = `37167e9`). O EasyPanel faz
+> build do `main`, então agora o deploy pega o código novo. Antes disso o deploy "não fazia
+> nada" porque o trabalho estava só na branch. **Falta o usuário disparar o deploy.**
+
 1. Rodar `comparar_modelos_ia.py` → setar `ANTHROPIC_MODEL` (provável Haiku) no EasyPanel.
 2. **`alembic upgrade head` (migration 008)** — segue PENDENTE de sessões anteriores
    (revogação JWT). Esta sessão NÃO adiciona migration, mas a 008 precisa entrar.
