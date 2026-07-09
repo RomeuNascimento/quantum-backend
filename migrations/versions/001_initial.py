@@ -227,3 +227,7 @@ def downgrade() -> None:
     op.drop_table("colaboradores")
     op.drop_table("configuracoes")
     op.drop_table("users")
+    # Tipos ENUM do Postgres não são removidos junto com as tabelas — dropar
+    # explicitamente, senão um re-upgrade falha com "type ... already exists".
+    for _enum in ("unidadeenum", "origemenum", "periodoenum", "tiporeceitaenum"):
+        op.execute(f"DROP TYPE IF EXISTS {_enum}")
