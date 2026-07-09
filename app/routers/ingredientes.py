@@ -68,6 +68,43 @@ def listar(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db
     return result
 
 
+@router.get("/relatorio-precos")
+def relatorio_precos(user: User = Depends(get_usuario_atual), db: Session = Depends(get_db)):
+    """Histórico de preços de TODOS os insumos ativos numa só resposta.
+    Por ingrediente: pontos (data, preço da embalagem, custo unitário) do mais
+    recente ao mais antigo + variação % entre o 1º registro e o atual."""
+    ingredientes = db.query(Ingrediente).options(
+        selectinload(Ingrediente.precos)
+    ).filter(
+        Ingrediente.user_id == user.id, Ingrediente.ativo == True
+    ).order_by(Ingrediente.nome).all()
+    result = []
+    for ing in ingredientes:
+        precos = sorted(ing.precos, key=lambda x: x.data_compra, reverse=True)
+        if not precos:
+            continue  # sem histórico → nada a mostrar
+        pontos = [{
+            "data": p.data_compra.isoformat() if p.data_compra else None,
+            "preco": p.preco,
+            "quantidade_embalagem": p.quantidade_embalagem,
+            "custo_unitario": calcular_custo_unitario(p, ing.fator_correcao, ing.unidade),
+        } for p in precos]
+        atual = pontos[0]["custo_unitario"]
+        primeiro = pontos[-1]["custo_unitario"]
+        variacao_pct = ((atual - primeiro) / primeiro * 100) if primeiro else None
+        result.append({
+            "id": ing.id,
+            "nome": ing.nome,
+            "marca": ing.marca,
+            "unidade": getattr(ing.unidade, "value", ing.unidade),
+            "custo_atual": atual,
+            "n_registros": len(pontos),
+            "variacao_pct": variacao_pct,
+            "pontos": pontos,
+        })
+    return result
+
+
 @router.post("/", response_model=IngredienteOut, status_code=status.HTTP_201_CREATED)
 def criar(
     dados: IngredienteCreate,

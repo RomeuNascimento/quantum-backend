@@ -205,6 +205,8 @@ class Produto(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     nome = Column(String(150), nullable=False)
+    # Foto do produto (data URL base64, comprimida no cliente) — opcional
+    foto = Column(Text, nullable=True)
     ativo = Column(Boolean, default=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
 

@@ -3,13 +3,32 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-07-03 (branch `claude/simplicidade-reset-senha` — **Recuperação de senha por e-mail** (`/auth/esqueci-senha` + `/auth/redefinir-senha`), módulo `app/email.py` (SMTP), settings SMTP_* novas. SEM migration nova. ⚠️ SMTP_* precisa ser configurado no EasyPanel para o e-mail sair)
-**Penúltima:** 2026-06-21 — Assistente (cadastro guiado em 4 etapas) + Freemium (⚠️ DEPLOY ainda pendente)
-**Próxima sessão:** rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** backend+frontend (liberado — migration 008 JÁ APLICADA, ver abaixo); configurar SMTP_* no EasyPanel; renovar token do MCP easypanel (o de `.claude/settings.json` expirou); decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
+**Última sessão:** 2026-07-09 (branch `claude/recipe-calculator-adjustments-x9emrf` — **relatório de preços dos insumos** (`GET /ingredientes/relatorio-precos`) + **foto do produto** (`produtos.foto`, **migration 009**). 58 testes passando. ⚠️ DEPLOY pendente — rodar migration 009)
+**Penúltima:** 2026-07-03 — Recuperação de senha por e-mail
+**Próxima sessão:** **rodar migration 009 (`produtos.foto`)**; rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** backend+frontend; configurar SMTP_* no EasyPanel; renovar token do MCP easypanel; decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
 
 > ✅ **Migration 008 CONFIRMADA em produção (2026-07-03)** — `alembic current` = 008,
 > `users.token_version` e `revoked_tokens` verificados direto no banco. O deploy do
 > backend está destravado. (Avisos de "008 pendente" abaixo estão desatualizados.)
+
+---
+
+## Sessão 2026-07-09 — Relatório de preços dos insumos + foto do produto
+
+> Branch `claude/recipe-calculator-adjustments-x9emrf`. Backend do lote de ajustes do dono
+> (frontend correspondente: ver CLAUDE.md do frontend). **58 testes passando.**
+
+- **`GET /ingredientes/relatorio-precos`** (`app/routers/ingredientes.py`) — histórico de
+  preços de TODOS os insumos ativos numa só resposta: por ingrediente, `pontos` (data,
+  preço, custo unitário) do mais recente ao mais antigo + `variacao_pct` (1º registro →
+  atual) + `custo_atual`/`n_registros`. Ingrediente sem preço não entra. **Definido ANTES
+  de `/{id}`** para não colidir de rota. Testes: `tests/test_relatorio_precos.py` (2).
+- **Foto do produto** — `Produto.foto` (`Text`, nullable): data URL base64 comprimida no
+  cliente. `ProdutoCreate/Update/Out` expõem `foto`; o PUT usa `model_fields_set` (foto
+  ausente mantém, `null` limpa). **`migration 009_produto_foto`** (aditiva, nullable).
+  Testes: `tests/test_produto_foto.py` (1).
+- ⚠️ **Deploy: rodar `alembic upgrade head` (migration 009)** antes/junto do deploy do
+  backend. Aditiva e segura (coluna nullable). Do PC local o host é `72.61.132.202:5432`.
 
 ---
 
