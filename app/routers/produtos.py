@@ -154,7 +154,7 @@ def criar(
     garantir_limite_produtos(user, db)  # freemium: tier grátis até N produtos
     _validar_componentes(db, user, dados.preparacoes, dados.ingredientes, dados.embalagens, dados.mo_montagem)
 
-    produto = Produto(user_id=user.id, nome=dados.nome)
+    produto = Produto(user_id=user.id, nome=dados.nome, foto=dados.foto)
     db.add(produto)
     db.flush()
 
@@ -207,6 +207,9 @@ def atualizar(
 
     if dados.nome is not None:
         produto.nome = dados.nome
+    # 'foto' presente no payload (mesmo null) → atualiza/limpa; ausente → mantém
+    if "foto" in dados.model_fields_set:
+        produto.foto = dados.foto
 
     def _replace(model_class, field_name, items, **build):
         for obj in getattr(produto, field_name):

@@ -69,6 +69,7 @@ class ProdutoMOMontagemOut(BaseModel):
 
 class ProdutoCreate(BaseModel):
     nome: str
+    foto: Optional[str] = None
     preparacoes: List[ProdutoPreparacaoCreate] = []
     ingredientes: List[ProdutoIngredienteCreate] = []
     embalagens: List[ProdutoEmbalagemCreate] = []
@@ -77,6 +78,7 @@ class ProdutoCreate(BaseModel):
 
 class ProdutoUpdate(BaseModel):
     nome: Optional[str] = None
+    foto: Optional[str] = None
     preparacoes: Optional[List[ProdutoPreparacaoCreate]] = None
     ingredientes: Optional[List[ProdutoIngredienteCreate]] = None
     embalagens: Optional[List[ProdutoEmbalagemCreate]] = None
@@ -86,6 +88,7 @@ class ProdutoUpdate(BaseModel):
 class ProdutoOut(BaseModel):
     id: int
     nome: str
+    foto: Optional[str] = None
     ativo: bool
     criado_em: datetime
 
