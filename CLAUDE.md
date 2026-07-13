@@ -3,13 +3,33 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-07-03 (branch `claude/simplicidade-reset-senha` — **Recuperação de senha por e-mail** (`/auth/esqueci-senha` + `/auth/redefinir-senha`), módulo `app/email.py` (SMTP), settings SMTP_* novas. SEM migration nova. ⚠️ SMTP_* precisa ser configurado no EasyPanel para o e-mail sair)
-**Penúltima:** 2026-06-21 — Assistente (cadastro guiado em 4 etapas) + Freemium (⚠️ DEPLOY ainda pendente)
+**Última sessão:** 2026-07-13 (branch `claude/beautiful-hypatia-ljhmzm` — **`POST /ia/sugerir-valor-hora`**: sugestão de valor-hora de mercado por IA pra quem não sabe quanto cobrar. SEM migration. Frontend correspondente na mesma branch)
+**Penúltima:** 2026-07-03 — Recuperação de senha por e-mail (`/auth/esqueci-senha` + `/auth/redefinir-senha`, `app/email.py`; ⚠️ SMTP_* precisa ser configurado no EasyPanel)
 **Próxima sessão:** rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** backend+frontend (liberado — migration 008 JÁ APLICADA, ver abaixo); configurar SMTP_* no EasyPanel; renovar token do MCP easypanel (o de `.claude/settings.json` expirou); decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
 
 > ✅ **Migration 008 CONFIRMADA em produção (2026-07-03)** — `alembic current` = 008,
 > `users.token_version` e `revoked_tokens` verificados direto no banco. O deploy do
 > backend está destravado. (Avisos de "008 pendente" abaixo estão desatualizados.)
+
+---
+
+## Sessão 2026-07-13 — Sugestão de valor-hora por IA
+
+> Branch `claude/beautiful-hypatia-ljhmzm`. **SEM migration.** Pedido do dono: ajudar quem
+> não sabe calcular a própria hora. Decisão da sessão: a conversão salário→hora é conta
+> (frontend faz sozinho, sem IA); a IA entra só onde só ela resolve — sugerir um valor de
+> mercado pra quem NÃO FAZ IDEIA de quanto vale a própria hora. Pop-up de primeiro acesso
+> foi descartado (a Etapa 3 do Assistente já pergunta isso com contexto).
+
+- **`POST /ia/sugerir-valor-hora`** `{atividade}` → `{valor_hora, faixa_min, faixa_max,
+  explicacao, fonte:'estimativa'}`. Mesmo padrão do `sugerir-embalagem`: `PROMPT_VALOR_HORA`
+  + `BLOCO_SEGURANCA`, rate limit compartilhado (`_ia_limiter`), valores aproximados que o
+  usuário confirma. Atividade irreconhecível (IA devolve null) → 422 "Digite o valor direto".
+  Faixa/explicação são opcionais no parse (IA pode devolver só o valor).
+- Testes: `tests/test_valor_hora.py` (6) — feliz, faixa opcional, irreconhecível → 422,
+  valor inválido → 422, atividade vazia → 422, auth. **Suíte: 61 passando.**
+- Frontend na mesma branch: botão "Não sei — me sugere" na Etapa 3 do Assistente e em
+  Configurações (+ calculadora por salário em Configurações, sem IA).
 
 ---
 

@@ -174,6 +174,31 @@ class SugerirEmbalagemRequest(BaseModel):
     produto: str = Field(min_length=1, max_length=200)
 
 
+class SugerirValorHoraRequest(BaseModel):
+    atividade: str = Field(min_length=1, max_length=200)
+
+
+PROMPT_VALOR_HORA = """Você é um consultor de precificação para micro empreendedores autônomos no Brasil.
+
+A pessoa informa O QUE ela faz/vende. Sugira quanto vale UMA HORA do trabalho dela
+(valor-hora justo de mercado para autônomo no Brasil, valores atuais e realistas).
+
+REGRAS:
+- "valor_hora": valor sugerido em reais (número) — o meio da faixa
+- "faixa_min" / "faixa_max": faixa razoável em reais (números)
+- "explicacao": UMA frase curta, linguagem simples e falada, sem jargão
+  (ex: "Quem faz bolo caseiro pra vender costuma cobrar de R$ 15 a R$ 25 pela hora.")
+- É trabalho autônomo (sem carteira, sem benefícios) — o valor-hora deve ficar ACIMA
+  do salário mínimo proporcional por hora
+- Se o texto não descrever uma atividade reconhecível, devolva valor_hora: null
+
+São valores APROXIMADOS de referência — o usuário confirma/ajusta.
+
+Responda APENAS com JSON válido, sem markdown:
+
+{"valor_hora": 20.0, "faixa_min": 15.0, "faixa_max": 25.0, "explicacao": "..."}"""
+
+
 PROMPT_EMBALAGEM = """Você é especialista em embalagens de confeitaria/padaria no varejo BRASILEIRO.
 
 Para o PRODUTO informado, sugira de 0 a 2 embalagens típicas de venda (ex.: caixa de
@@ -426,6 +451,53 @@ def estimar_precos(
                 "fonte": "estimativa",
             })
         return {"itens": itens}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/sugerir-valor-hora")
+def sugerir_valor_hora(
+    body: SugerirValorHoraRequest,
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
+    """Sugere um valor-hora de mercado (BR) para a atividade do usuário.
+
+    Conhecimento do modelo — valor aproximado marcado como estimativa, para quem
+    não faz ideia de quanto vale a própria hora. O usuário confirma/ajusta."""
+    _checar_rate_limit(user.id)
+    prompt = f"{PROMPT_VALOR_HORA}\n\nATIVIDADE: {body.atividade.strip()}{BLOCO_SEGURANCA}"
+    try:
+        resp = _client().messages.create(
+            model=_model(), max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if not resp.content or not hasattr(resp.content[0], "text"):
+            raise HTTPException(status_code=422, detail="A IA retornou uma resposta vazia. Tente novamente.")
+        texto = resp.content[0].text.strip()
+        if texto.startswith("```"):
+            linhas = texto.splitlines()
+            texto = "\n".join(linhas[1:-1] if linhas[-1].strip() == "```" else linhas[1:])
+        data = json.loads(texto.strip())
+        vh = data.get("valor_hora") if isinstance(data, dict) else None
+        # null quando a atividade é irreconhecível — 422 com mensagem acionável
+        if not isinstance(vh, (int, float)) or isinstance(vh, bool) or vh <= 0:
+            raise HTTPException(status_code=422, detail="Não consegui estimar pra essa atividade. Digite o valor direto.")
+
+        def _num(chave):
+            v = data.get(chave)
+            return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else None
+
+        explicacao = data.get("explicacao")
+        return {
+            "valor_hora": float(vh),
+            "faixa_min": _num("faixa_min"),
+            "faixa_max": _num("faixa_max"),
+            "explicacao": explicacao.strip()[:300] if isinstance(explicacao, str) else None,
+            "fonte": "estimativa",
+        }
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
     except anthropic.APIError as e:
