@@ -22,6 +22,13 @@
   para `'mensal'`. O anual continua funcionando se `STRIPE_PRICE_ID` existir — só deixa de ser
   o padrão e some da UI do front.
 - Webhook e `/billing/planos` inalterados (eventos e leitura de preços já cobrem o mensal).
+- **Limpeza do trial (código morto):** removidos `TRIAL_DIAS`, `_trial_fim` e `status_efetivo`.
+  O modelo é 100% freemium: `plano_pago(user)` = `assinatura_status == "ativa"` e validade
+  vigente; qualquer outro caso cai no tier grátis (capado por produtos). `/billing/status`
+  não devolve mais `status`/`trial_fim` (frontend não usava). Default do model
+  `assinatura_status` mudou de `"trial"` → `"gratis"` (só afeta contas novas, SEM migration —
+  é default do ORM, não server_default; contas existentes seguem válidas). Testes reescritos
+  (`test_billing.py`): **54 passando**.
 - ⚠️ **Config pendente (usuário):** criar o preço mensal R$ 19,90 no Stripe (painel: novo preço
   recorrente/mês no produto "Quantum — Plano Anual", **ou** `scripts/setup_stripe.py` que já cria
   anual + mensal e imprime os IDs) → setar **`STRIPE_PRICE_ID_MENSAL`** no EasyPanel (serviço

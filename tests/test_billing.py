@@ -1,4 +1,4 @@
-"""Testes do billing: status_efetivo, endpoint /billing/status e paywall (402).
+"""Testes do billing: plano_pago, endpoint /billing/status e paywall (402).
 
 Roda em sqlite in-memory, sem chamadas ao Stripe — testa apenas a lógica de
 status e o enforcement do paywall nas rotas de negócio. Executar com:
@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.models.models import User
-from app.routers.billing import status_efetivo
+from app.routers.billing import plano_pago
 from tests.db import TestingSession
 
 
@@ -32,7 +32,7 @@ def _set_user(email, **campos):
     db.close()
 
 
-# ---------- status_efetivo (lógica pura) ----------
+# ---------- plano_pago (lógica pura) ----------
 
 def _user(status, criado_em=None, validade=None):
     return User(
@@ -43,41 +43,38 @@ def _user(status, criado_em=None, validade=None):
     )
 
 
-def test_trial_dentro_do_prazo():
-    assert status_efetivo(_user("trial")) == "trial"
+def test_gratis_nao_e_pago():
+    assert plano_pago(_user("gratis")) is False
 
 
-def test_trial_expirado():
-    antigo = datetime.utcnow() - timedelta(days=8)
-    assert status_efetivo(_user("trial", criado_em=antigo)) == "vencida"
+def test_vencida_nao_e_pago():
+    assert plano_pago(_user("vencida")) is False
 
 
-def test_ativa_sem_validade_e_cortesia():
-    assert status_efetivo(_user("ativa")) == "ativa"
+def test_ativa_sem_validade_e_pago():
+    # validade None = ativa sem expiração (contas legadas/cortesia)
+    assert plano_pago(_user("ativa")) is True
 
 
-def test_ativa_com_validade_futura():
+def test_ativa_com_validade_futura_e_pago():
     futuro = datetime.utcnow() + timedelta(days=300)
-    assert status_efetivo(_user("ativa", validade=futuro)) == "ativa"
+    assert plano_pago(_user("ativa", validade=futuro)) is True
 
 
-def test_ativa_com_validade_passada():
+def test_ativa_com_validade_passada_nao_e_pago():
     passado = datetime.utcnow() - timedelta(days=1)
-    assert status_efetivo(_user("ativa", validade=passado)) == "vencida"
-
-
-def test_status_desconhecido_e_vencida():
-    assert status_efetivo(_user("vencida")) == "vencida"
+    assert plano_pago(_user("ativa", validade=passado)) is False
 
 
 # ---------- endpoint /billing/status + paywall ----------
 
-def test_status_endpoint_trial(client, auth):
+def test_status_endpoint_conta_nova_e_gratis(client, auth):
     r = client.get("/billing/status", headers=auth)
     assert r.status_code == 200
     body = r.json()
-    assert body["status"] == "trial"
-    assert body["trial_fim"] is not None
+    assert body["plano"] == "gratis"
+    assert body["produtos_limite"] == LIMITE_PRODUTOS_FREE
+    assert body["produtos_usados"] == 0
 
 
 # ---------- Freemium: sem paywall global; gate por nº de produtos ----------
@@ -145,7 +142,7 @@ def test_webhook_idempotente(client, auth, monkeypatch):
     _set_user(
         "billing@test.com",
         stripe_customer_id="cus_123",
-        assinatura_status="trial",
+        assinatura_status="gratis",
         assinatura_validade=None,
     )
     evento = {
@@ -167,10 +164,10 @@ def test_webhook_idempotente(client, auth, monkeypatch):
 
     # reentrega do MESMO event_id: precisa ser no-op — adultera o status para
     # provar que o reprocesso não reescreve nada
-    _set_user("billing@test.com", assinatura_status="trial")
+    _set_user("billing@test.com", assinatura_status="gratis")
     r2 = client.post("/billing/webhook", content=b"{}", headers={"stripe-signature": "t"})
     assert r2.status_code == 200
     db = TestingSession()
     user = db.query(User).filter(User.email == "billing@test.com").first()
-    assert user.assinatura_status == "trial"  # duplicado não reprocessou
+    assert user.assinatura_status == "gratis"  # duplicado não reprocessou
     db.close()

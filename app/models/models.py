@@ -43,9 +43,11 @@ class User(Base):
     email = Column(String(200), unique=True, index=True, nullable=False)
     senha_hash = Column(String(255), nullable=False)
     criado_em = Column(DateTime, default=datetime.utcnow)
-    # Billing (Stripe): status 'trial' | 'ativa' | 'vencida'
+    # Billing (Stripe): 'gratis' (freemium, capado por produtos) | 'ativa' (assinante).
+    # 'vencida' = ex-assinante cujo período acabou (setado pelo webhook). Só 'ativa'
+    # e dentro da validade libera acesso ilimitado; o resto cai no tier grátis.
     stripe_customer_id = Column(String(100), nullable=True, index=True)
-    assinatura_status = Column(String(20), nullable=False, default="trial")
+    assinatura_status = Column(String(20), nullable=False, default="gratis")
     assinatura_validade = Column(DateTime, nullable=True)
     # Revogação de JWT em massa: o token carrega o `tv` da emissão; bumpar este
     # contador (logout-all / troca de senha) invalida todas as sessões abertas.

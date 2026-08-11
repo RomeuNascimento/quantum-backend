@@ -27,8 +27,6 @@ from app.models.models import Produto, StripeEvent, User
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
-TRIAL_DIAS = 7
-
 # Freemium: o tier grátis permite até N produtos ativos. Pago = ilimitado.
 # O assistente e todo o resto do app ficam liberados no grátis (a "isca"); o
 # único gate é a criação do (N+1)-ésimo produto.
@@ -51,25 +49,18 @@ def _frontend_url() -> str:
     return os.getenv("FRONTEND_URL", "https://quantumcalc.com.br").rstrip("/")
 
 
-def _trial_fim(user: User) -> datetime:
-    return (user.criado_em or datetime.utcnow()) + timedelta(days=TRIAL_DIAS)
-
-
-def status_efetivo(user: User) -> str:
-    """'trial' | 'ativa' | 'vencida' considerando expirações."""
-    if user.assinatura_status == "ativa":
-        # validade None = ativa sem expiração (contas legadas/cortesia)
-        if user.assinatura_validade and user.assinatura_validade < datetime.utcnow():
-            return "vencida"
-        return "ativa"
-    if user.assinatura_status == "trial":
-        return "trial" if _trial_fim(user) > datetime.utcnow() else "vencida"
-    return "vencida"
-
-
 def plano_pago(user: User) -> bool:
-    """Assinatura paga e vigente (acesso ilimitado). Trial/vencida = tier grátis."""
-    return status_efetivo(user) == "ativa"
+    """True = assinatura paga e ainda vigente (acesso ilimitado).
+
+    Qualquer outro caso — grátis, cancelada, expirada — cai no tier grátis
+    (capado por nº de produtos). Só o status 'ativa' e dentro da validade libera.
+    Modelo é freemium: não há mais trial por tempo."""
+    if user.assinatura_status != "ativa":
+        return False
+    # validade None = ativa sem expiração (contas legadas/cortesia)
+    if user.assinatura_validade and user.assinatura_validade < datetime.utcnow():
+        return False
+    return True
 
 
 def contar_produtos_ativos(db: Session, user_id: int) -> int:
@@ -85,9 +76,6 @@ def billing_status(user: User = Depends(get_usuario_atual), db: Session = Depend
         "plano": "pago" if pago else "gratis",
         "produtos_usados": usados,
         "produtos_limite": None if pago else LIMITE_PRODUTOS_FREE,
-        # campos legados mantidos para compat com clientes antigos
-        "status": status_efetivo(user),
-        "trial_fim": _trial_fim(user).isoformat() if user.assinatura_status == "trial" else None,
         "validade": user.assinatura_validade.isoformat() if user.assinatura_validade else None,
     }
 
