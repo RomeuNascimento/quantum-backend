@@ -137,7 +137,7 @@ def listar_planos():
 
 
 class CheckoutIn(BaseModel):
-    plano: Literal["anual", "mensal"] = "anual"
+    plano: Literal["anual", "mensal"] = "mensal"
 
 
 # Endpoints síncronos (def) de propósito: chamadas à API do Stripe rodam no
@@ -149,7 +149,7 @@ def criar_checkout(
     db: Session = Depends(get_db),
 ):
     stripe = _stripe()
-    price_id = _price_id(dados.plano if dados else "anual")
+    price_id = _price_id(dados.plano if dados else "mensal")
     session = stripe.checkout.Session.create(
         mode="subscription",
         customer=_customer_id(stripe, user, db),
