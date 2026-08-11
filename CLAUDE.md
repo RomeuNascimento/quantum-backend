@@ -3,9 +3,21 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-08-11 (branch `claude/sessao-ajuda-cliente-euf7vf`, PR #8 — **vender só o plano mensal (R$ 19,90)**: `CheckoutIn.plano` e fallback do `/checkout` → `'mensal'`. SEM migration. ⚠️ requer `STRIPE_PRICE_ID_MENSAL` no EasyPanel)
+**Última sessão:** 2026-08-11 (branch `claude/sessao-ajuda-cliente-euf7vf`, PRs #8 mensal + #9 limpeza-trial back / #12 ajuda + #13 mensal front — **vender só o mensal R$ 19,90** + **freemium 100%** (removido código morto do trial) + **tela /ajuda** (suporte WhatsApp/e-mail) no front. SEM migration. Backend JÁ deployado nesta sessão.)
 **Penúltima:** 2026-07-03 (branch `claude/simplicidade-reset-senha` — Recuperação de senha por e-mail; SMTP_* no EasyPanel)
-**Próxima sessão:** rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** backend+frontend (liberado — migration 008 JÁ APLICADA, ver abaixo); configurar SMTP_* no EasyPanel; renovar token do MCP easypanel (o de `.claude/settings.json` expirou); decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
+**Próxima sessão (PENDÊNCIAS ABERTAS — deixado em 2026-08-11):**
+> 1. **Preço mensal JÁ criado no Stripe:** `STRIPE_PRICE_ID_MENSAL=price_1U33jW5aXvvE532vKZs89Nk5`
+>    → conferir que está no EasyPanel (serviço backend) + **testar compra de R$ 19,90** (fluxo: conta nova → Assinatura → botão único mensal → abre Stripe → conta vira "pago").
+> 2. **DEPLOY do FRONTEND** ainda pendente (tela "só mensal" + /ajuda não subiram). Backend já foi.
+> 3. **Religar serviços** que foram pausados pra liberar RAM no deploy: `n8n`, `evolution-api`(+db+redis), `wordpress`/`wordpress-db` do projeto `boaspraticasdeinventario`.
+> 4. **SMTP (reset de senha) — Titan:** `SMTP_HOST=smtp.titan.email`, `SMTP_PORT=587`,
+>    `SMTP_USER=SMTP_FROM=suporte@quantumcalc.com.br`, `SMTP_PASSWORD`=senha da caixa Titan →
+>    setar no EasyPanel + redeploy backend. (Se cair no spam, checar SPF/DKIM no Titan.)
+> 5. **Servidor apertado:** VPS 1 core / 3,8 GB rodando ~13 serviços (RAM ~84%, load 8–11 no build).
+>    Builds nixpacks engasgam (timeout `cache.nixos.org`). Workaround: pausar serviços não-essenciais
+>    durante o deploy. Solução real: **upgrade do VPS** ou enxugar serviços.
+> 6. Backlog antigo: rodar `comparar_modelos_ia.py` → `ANTHROPIC_MODEL` (Haiku corta custo IA);
+>    termos/privacidade no app; refresh token (JWT 30min); decisão OVO/ÓLEO unidade vs peso.
 
 > ✅ **Migration 008 CONFIRMADA em produção (2026-07-03)** — `alembic current` = 008,
 > `users.token_version` e `revoked_tokens` verificados direto no banco. O deploy do
@@ -56,6 +68,10 @@
 - Testes: `tests/test_reset_senha.py` (6) — fluxo completo, anti-enumeração, uso único,
   derruba sessões, purpose não autentica, token lixo → 400. **Suíte: 53 passando.**
 - ⚠️ Deploy: configurar `SMTP_*` no EasyPanel (senão o "esqueci a senha" não envia nada).
+  **Valores do provedor do dono (Titan, definidos em 2026-08-11):** `SMTP_HOST=smtp.titan.email`,
+  `SMTP_PORT=587`, `SMTP_USER=SMTP_FROM=suporte@quantumcalc.com.br`, `SMTP_PASSWORD` = senha da
+  caixa Titan (a mesma do webmail; Titan não usa "app password"). Se timeout, tentar porta 465.
+  O e-mail sai *de* `suporte@` e chega na caixa do próprio usuário. **AINDA NÃO CONFIGURADO.**
 
 ---
 
