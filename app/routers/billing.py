@@ -30,7 +30,8 @@ router = APIRouter(prefix="/billing", tags=["Billing"])
 # Freemium: o tier grátis permite até N produtos ativos. Pago = ilimitado.
 # O assistente e todo o resto do app ficam liberados no grátis (a "isca"); o
 # único gate é a criação do (N+1)-ésimo produto.
-LIMITE_PRODUTOS_FREE = 3
+# 1 = a pessoa precifica UMA receita grátis (vê como funciona) e já bate no "assine".
+LIMITE_PRODUTOS_FREE = 1
 
 
 def _stripe():
@@ -232,10 +233,11 @@ def garantir_limite_produtos(user: User, db: Session) -> None:
     if plano_pago(user):
         return
     if contar_produtos_ativos(db, user.id) >= LIMITE_PRODUTOS_FREE:
+        item = "produto" if LIMITE_PRODUTOS_FREE == 1 else "produtos"
         raise HTTPException(
             status_code=402,
             detail=(
-                f"Plano grátis permite até {LIMITE_PRODUTOS_FREE} produtos. "
-                "Assine para criar produtos ilimitados."
+                f"O plano grátis inclui {LIMITE_PRODUTOS_FREE} {item}. "
+                "Assine para precificar quantas receitas quiser."
             ),
         )
