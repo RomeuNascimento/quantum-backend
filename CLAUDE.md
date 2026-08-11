@@ -3,13 +3,30 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-07-03 (branch `claude/simplicidade-reset-senha` — **Recuperação de senha por e-mail** (`/auth/esqueci-senha` + `/auth/redefinir-senha`), módulo `app/email.py` (SMTP), settings SMTP_* novas. SEM migration nova. ⚠️ SMTP_* precisa ser configurado no EasyPanel para o e-mail sair)
-**Penúltima:** 2026-06-21 — Assistente (cadastro guiado em 4 etapas) + Freemium (⚠️ DEPLOY ainda pendente)
+**Última sessão:** 2026-08-11 (branch `claude/sessao-ajuda-cliente-euf7vf`, PR #8 — **vender só o plano mensal (R$ 19,90)**: `CheckoutIn.plano` e fallback do `/checkout` → `'mensal'`. SEM migration. ⚠️ requer `STRIPE_PRICE_ID_MENSAL` no EasyPanel)
+**Penúltima:** 2026-07-03 (branch `claude/simplicidade-reset-senha` — Recuperação de senha por e-mail; SMTP_* no EasyPanel)
 **Próxima sessão:** rodar `comparar_modelos_ia.py` → escolher `ANTHROPIC_MODEL`; **DEPLOY** backend+frontend (liberado — migration 008 JÁ APLICADA, ver abaixo); configurar SMTP_* no EasyPanel; renovar token do MCP easypanel (o de `.claude/settings.json` expirou); decisão OVO/ÓLEO por unidade vs peso; refresh token (JWT 30min)
 
 > ✅ **Migration 008 CONFIRMADA em produção (2026-07-03)** — `alembic current` = 008,
 > `users.token_version` e `revoked_tokens` verificados direto no banco. O deploy do
 > backend está destravado. (Avisos de "008 pendente" abaixo estão desatualizados.)
+
+---
+
+## Sessão 2026-08-11 — Vender só o plano mensal (R$ 19,90)
+
+> Branch `claude/sessao-ajuda-cliente-euf7vf` (PR #8 back / #13 front). **SEM migration.**
+> Decisão do dono: na fase de teste, oferecer **apenas o mensal de R$ 19,90**.
+
+- `CheckoutIn.plano` default e o fallback do `POST /billing/checkout` passaram de `'anual'`
+  para `'mensal'`. O anual continua funcionando se `STRIPE_PRICE_ID` existir — só deixa de ser
+  o padrão e some da UI do front.
+- Webhook e `/billing/planos` inalterados (eventos e leitura de preços já cobrem o mensal).
+- ⚠️ **Config pendente (usuário):** criar o preço mensal R$ 19,90 no Stripe (painel: novo preço
+  recorrente/mês no produto "Quantum — Plano Anual", **ou** `scripts/setup_stripe.py` que já cria
+  anual + mensal e imprime os IDs) → setar **`STRIPE_PRICE_ID_MENSAL`** no EasyPanel (serviço
+  backend) → deploy. Sem essa env var, `/billing/checkout` retorna 503 ("Plano não configurado").
+- `.env.example` já documenta `STRIPE_PRICE_ID_MENSAL` (opcional).
 
 ---
 
