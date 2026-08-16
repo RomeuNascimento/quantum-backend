@@ -481,3 +481,161 @@ def sugerir_embalagem(
         raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
     except anthropic.APIError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ─── FINANCEIRO (assistente financeiro) ───────────────────────────────────────
+# Classificação barata e frequente → modelo rápido próprio (default Haiku),
+# separado do ANTHROPIC_MODEL usado na leitura de nota/receita.
+
+def _model_financeiro():
+    return os.getenv("ANTHROPIC_MODEL_FINANCEIRO", "claude-haiku-4-5")
+
+
+class InterpretarLancamentoRequest(BaseModel):
+    texto: str = Field(min_length=1, max_length=500)
+
+
+PROMPT_LANCAMENTO = """Você organiza as finanças de um micro empreendedor de comida (bolos, doces, salgados).
+Ele escreve do jeito dele o que ENTROU (vendas, encomendas) ou SAIU (gastos) de dinheiro.
+Interprete o texto e devolva os lançamentos.
+
+REGRAS:
+- "tipo": "entrada" (recebeu dinheiro: vendeu, receber pix, encomenda paga) ou "saida" (gastou: comprou, pagou, conta)
+- "valor": número em reais (aceite "50", "50,00", "cinquenta"); sem valor identificável → NÃO crie o lançamento
+- "descricao": curta, do jeito que a pessoa falou (ex: "mercado", "20 brigadeiros pra Ana")
+- "categoria" para saida: insumos | embalagem | transporte | contas | equipamento | pessoal | outros
+- "categoria" para entrada: venda | encomenda | outros
+- "data": "YYYY-MM-DD" só se o texto disser (ontem, sábado...); senão null (= hoje)
+- Um texto pode ter VÁRIOS lançamentos ("mercado 80 e gás 110" → 2 saídas)
+- Texto sem nenhum lançamento identificável → {"lancamentos": []}
+
+Responda APENAS com JSON válido, sem markdown:
+
+{"lancamentos": [{"tipo": "saida", "valor": 80.0, "descricao": "mercado", "categoria": "insumos", "data": null}]}"""
+
+
+PROMPT_COMPROVANTE = """Você lê comprovantes de transferência (Pix, TED, dinheiro) de um micro empreendedor de comida.
+Analise a imagem e extraia UMA transferência.
+
+REGRAS:
+- "tipo": "entrada" se o dono do comprovante RECEBEU o dinheiro; "saida" se ELE pagou.
+  Dica: comprovante gerado pelo app do próprio pagador ("você pagou", "comprovante de pagamento") → saida;
+  notificação/comprovante de recebimento ("você recebeu") → entrada. Na dúvida → "entrada"
+  (o caso comum: a pessoa fotografa o Pix que o cliente mandou).
+- "valor": valor da transferência em reais
+- "contraparte": nome da outra pessoa/empresa envolvida, ou null
+- "data": "YYYY-MM-DD" da transferência, ou null
+- "descricao": curta (ex: "Pix de Maria Souza")
+- Se a imagem NÃO for um comprovante ou o valor não estiver legível → {"valor": null}
+
+Responda APENAS com JSON válido, sem markdown:
+
+{"tipo": "entrada", "valor": 100.0, "contraparte": "Maria Souza", "data": "2026-08-16", "descricao": "Pix de Maria Souza"}"""
+
+
+def _parse_objeto(resp) -> dict:
+    """Extrai um objeto JSON (não-lista) da resposta da IA."""
+    if not resp.content or not hasattr(resp.content[0], "text"):
+        raise HTTPException(status_code=422, detail="A IA retornou uma resposta vazia. Tente novamente.")
+    texto = resp.content[0].text.strip()
+    if texto.startswith("```"):
+        linhas = texto.splitlines()
+        texto = "\n".join(linhas[1:-1] if linhas[-1].strip() == "```" else linhas[1:])
+    data = json.loads(texto.strip())
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
+    return data
+
+
+def _data_valida(valor) -> str | None:
+    from datetime import datetime as _dt
+    if not isinstance(valor, str):
+        return None
+    try:
+        _dt.strptime(valor, "%Y-%m-%d")
+        return valor
+    except ValueError:
+        return None
+
+
+def _normalizar_lancamento(item: dict) -> dict | None:
+    """Valida um lançamento vindo da IA; None se inválido."""
+    if not isinstance(item, dict):
+        return None
+    valor = item.get("valor")
+    if not isinstance(valor, (int, float)) or valor <= 0:
+        return None
+    tipo = item.get("tipo") if item.get("tipo") in ("entrada", "saida") else "saida"
+    descricao = item.get("descricao")
+    categoria = item.get("categoria")
+    return {
+        "tipo": tipo,
+        "valor": float(valor),
+        "descricao": str(descricao)[:200] if isinstance(descricao, str) and descricao.strip() else None,
+        "categoria": str(categoria)[:50] if isinstance(categoria, str) and categoria.strip() else None,
+        "data": _data_valida(item.get("data")),
+    }
+
+
+@router.post("/interpretar-lancamento")
+def interpretar_lancamento(
+    body: InterpretarLancamentoRequest,
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
+    """Texto livre ("gastei 80 no mercado e 110 de gás") → lançamentos estruturados.
+
+    Nada é gravado aqui — o frontend mostra pra pessoa confirmar antes de salvar."""
+    _checar_rate_limit(user.id)
+    prompt = f"{PROMPT_LANCAMENTO}\n\nTEXTO DO USUÁRIO:\n{body.texto.strip()}{BLOCO_SEGURANCA}"
+    try:
+        resp = _client().messages.create(
+            model=_model_financeiro(),
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        data = _parse_objeto(resp)
+        brutos = data.get("lancamentos")
+        if not isinstance(brutos, list):
+            raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
+        lancamentos = [n for n in (_normalizar_lancamento(i) for i in brutos) if n]
+        return {"lancamentos": lancamentos}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/comprovante")
+def ler_comprovante(
+    file: UploadFile = File(...),
+    user: User = Depends(get_usuario_atual),
+    db: Session = Depends(get_db),
+):
+    """Foto/print de comprovante (Pix etc.) → um lançamento pra confirmar."""
+    _checar_rate_limit(user.id)
+    content = _ler_upload(file)
+    block = _image_block(content)
+    prompt = PROMPT_COMPROVANTE + BLOCO_SEGURANCA
+    try:
+        resp = _client().messages.create(
+            model=_model_financeiro(),
+            max_tokens=512,
+            messages=[{"role": "user", "content": [block, {"type": "text", "text": prompt}]}],
+        )
+        data = _parse_objeto(resp)
+        lanc = _normalizar_lancamento(data)
+        if lanc is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Não consegui ler o valor nesse comprovante. Tente um print mais nítido ou digite o valor.",
+            )
+        # comprovante sem tipo claro → entrada (caso comum: Pix recebido do cliente)
+        if data.get("tipo") not in ("entrada", "saida"):
+            lanc["tipo"] = "entrada"
+        lanc["contraparte"] = data.get("contraparte") if isinstance(data.get("contraparte"), str) else None
+        return {"lancamento": lanc}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="A IA retornou um formato inesperado. Tente novamente.")
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=str(e))

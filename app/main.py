@@ -18,6 +18,7 @@ from app.routers.colaboradores import router as colaboradores_router
 from app.routers.ia import router as ia_router
 from app.routers.assistente import router as assistente_router
 from app.routers.billing import router as billing_router
+from app.routers.financeiro import router as financeiro_router
 
 settings = get_settings()
 
@@ -63,6 +64,7 @@ app.include_router(colaboradores_router)
 app.include_router(ia_router)
 app.include_router(assistente_router)
 app.include_router(billing_router)
+app.include_router(financeiro_router)
 
 
 @app.get("/health")

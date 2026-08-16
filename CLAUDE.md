@@ -3,7 +3,8 @@
 ## Estado do Projeto
 
 **Criado em:** 2026-05-20
-**Última sessão:** 2026-08-11 (branch `claude/sessao-ajuda-cliente-euf7vf`, PRs #8 mensal + #9 limpeza-trial back / #12 ajuda + #13 mensal front — **vender só o mensal R$ 19,90** + **freemium 100%** (removido código morto do trial) + **tela /ajuda** (suporte WhatsApp/e-mail) no front. SEM migration. Backend JÁ deployado nesta sessão.)
+**Última sessão:** 2026-08-16 (branch `claude/ingredientes-preco-fluxo-62ur67` — **Financeiro / assistente financeiro (fase 1)**: tabela `lancamentos` (⚠️ **MIGRATION 009 PENDENTE em produção**), router `/financeiro`, IA `interpretar-lancamento` + `comprovante` em Haiku. Fase 2 = canal WhatsApp, ver seção da sessão.)
+**Penúltima:** 2026-08-11 (branch `claude/sessao-ajuda-cliente-euf7vf`, PRs #8 mensal + #9 limpeza-trial back / #12 ajuda + #13 mensal front — **vender só o mensal R$ 19,90** + **freemium 100%** (removido código morto do trial) + **tela /ajuda** (suporte WhatsApp/e-mail) no front. SEM migration. Backend JÁ deployado nesta sessão.)
 **Penúltima:** 2026-07-03 (branch `claude/simplicidade-reset-senha` — Recuperação de senha por e-mail; SMTP_* no EasyPanel)
 **Próxima sessão (PENDÊNCIAS ABERTAS — deixado em 2026-08-11):**
 > 1. **Preço mensal JÁ criado no Stripe:** `STRIPE_PRICE_ID_MENSAL=price_1U33jW5aXvvE532vKZs89Nk5`
@@ -22,6 +23,63 @@
 > ✅ **Migration 008 CONFIRMADA em produção (2026-07-03)** — `alembic current` = 008,
 > `users.token_version` e `revoked_tokens` verificados direto no banco. O deploy do
 > backend está destravado. (Avisos de "008 pendente" abaixo estão desatualizados.)
+
+---
+
+## Sessão 2026-08-16 — Financeiro (assistente financeiro · fase 1)
+
+> Branch `claude/ingredientes-preco-fluxo-62ur67`. **⚠️ MIGRATION 009** (`lancamentos`) —
+> precisa de `alembic upgrade head` em produção antes do deploy. Decisão do dono: evoluir
+> o SaaS pra assistente financeiro (retenção diária), mirando o informal. Fase 1 = motor
+> de lançamentos + IA no app; **fase 2 = canal WhatsApp** (ver pendências abaixo).
+
+### Model + router
+- **`Lancamento`** (`models.py`): user_id, `tipo` entrada|saida, `valor` (Dinheiro),
+  `descricao`, `categoria`, `data` (Date, index), `origem` manual|ia_texto|comprovante|nota|whatsapp,
+  criado_em. `tipo`/`origem` são String (não ENUM nativo — trauma da migration 002).
+- **`app/routers/financeiro.py`** — `GET/POST /financeiro/lancamentos?mes=YYYY-MM`,
+  `DELETE /financeiro/lancamentos/{id}`, `GET /financeiro/resumo?mes=` (entradas, saidas,
+  sobra, quantidade, saidas_por_categoria). Tudo escopado por user_id. Origem desconhecida
+  vira `manual` (defensivo). Schemas em `app/schemas/financeiro.py` (categorias sugeridas lá).
+
+### IA (modelo barato próprio)
+- **`_model_financeiro()`** em `ia.py`: env **`ANTHROPIC_MODEL_FINANCEIRO`**, default
+  **`claude-haiku-4-5`** — classificação frequente/barata, separada do `ANTHROPIC_MODEL`
+  (Opus) usado em nota/receita. Custo por mensagem de texto ~R$ 0,004.
+- **`POST /ia/interpretar-lancamento`** `{texto}` → `{lancamentos:[{tipo, valor, descricao,
+  categoria, data|null}]}`. Vários lançamentos por texto ("mercado 80 e gás 110" → 2).
+  Nada é gravado — o front confirma antes. Valores/datas inválidos são descartados/anulados.
+- **`POST /ia/comprovante`** (upload imagem/PDF) → `{lancamento:{tipo, valor, contraparte,
+  data, descricao}}`. Comprovante Pix: sem direção clara → `entrada` (caso comum: cliente
+  pagou). Ilegível → 422 amigável. Mesmo rate limit `_ia_limiter` (10/10min) dos demais.
+- Prompts com `BLOCO_SEGURANCA` (anti prompt injection), parse tolerante `_parse_objeto`.
+
+### Testes
+- `tests/test_financeiro.py` (11): CRUD, resumo com matemática conferida, mês inválido,
+  multi-tenant (não vê/não deleta alheio), origem desconhecida→manual, IA mockada
+  (interpretar multi-lançamento, descarte sem valor, modelo=haiku, comprovante ok/ilegível).
+  **Suíte: 65 passando.** Migration 009 upgrade/downgrade validada em sqlite (via stamp 008 —
+  a chain completa não roda em sqlite porque a 001 usa `NOW()`).
+
+### ⚠️ Pendências de deploy (usuário)
+1. **`alembic upgrade head` (migration 009)** em produção ANTES do deploy do backend.
+2. Deploy backend + frontend (tela "Meu dinheiro" no front depende dos endpoints novos).
+3. Opcional: `ANTHROPIC_MODEL_FINANCEIRO` no EasyPanel (sem ela, Haiku 4.5 — já é o barato).
+
+### 📱 FASE 2 — Canal WhatsApp (planejado, NÃO iniciado — decisões conversadas em 2026-08-16)
+- **Arquitetura decidida:** um número da empresa pra todos; identificação por telefone do
+  remetente (vincular telefone→user via código `wa.me/NUM?text=conectar CODIGO`); webhook
+  chama os MESMOS endpoints desta fase (interpretar/comprovante/lancamentos).
+- **Validação barata primeiro:** testar com Evolution API (já instalada na VPS, pausada) em
+  número descartável — risco de ban por ser não-oficial. Pra valer: WhatsApp Cloud API
+  oficial (Meta) — receber/responder é grátis; só template proativo paga (~R$0,04/msg
+  utility). Resumo semanal proativo = a máquina de retenção.
+- **Custo estimado:** ~R$ 0,50/usuário ativo/mês (IA Haiku + 4 resumos) ≈ 2–3% da assinatura.
+- **Pré-requisitos:** upgrade da VPS (1 core/3,8GB não aguenta religar Evolution + n8n);
+  número dedicado (≠ suporte 5591982368453); decidir trava freemium do financeiro
+  (hoje TODOS têm acesso — sem limite; candidato natural a virar recurso de assinante).
+- **LGPD:** dado financeiro — publicar termos/privacidade (rascunhos em docs/legal do front)
+  antes do lançamento público do canal.
 
 ---
 
