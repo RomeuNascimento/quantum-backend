@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Numeric, Boolean, DateTime,
+    Column, Integer, String, Numeric, Boolean, DateTime, Date,
     ForeignKey, Enum, Text, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
@@ -61,6 +61,7 @@ class User(Base):
     produtos = relationship("Produto", back_populates="user")
     canais = relationship("Canal", back_populates="user")
     custos_fixos = relationship("CustoFixo", back_populates="user")
+    lancamentos = relationship("Lancamento", back_populates="user")
 
 
 class Configuracao(Base):
@@ -339,6 +340,28 @@ class StripeEvent(Base):
     event_id = Column(String(255), unique=True, nullable=False, index=True)
     tipo = Column(String(100), nullable=False)
     recebido_em = Column(DateTime, default=datetime.utcnow)
+
+
+# ─── FINANCEIRO ───────────────────────────────────────────────────────────────
+
+class Lancamento(Base):
+    """Fluxo de caixa simples do micro empreendedor: entrou/saiu, sem plano de
+    contas. `tipo` e `origem` são String (não ENUM nativo) de propósito — o ENUM
+    do PostgreSQL já deu dor de cabeça na migration 002."""
+    __tablename__ = "lancamentos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    tipo = Column(String(10), nullable=False)          # entrada | saida
+    valor = Column(Dinheiro, nullable=False)
+    descricao = Column(String(200), nullable=True)
+    categoria = Column(String(50), nullable=True)
+    data = Column(Date, nullable=False, index=True)
+    # manual | ia_texto | comprovante | nota | whatsapp (fase 2)
+    origem = Column(String(20), nullable=False, default="manual")
+    criado_em = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="lancamentos")
 
 
 # ─── REVOGAÇÃO DE JWT ─────────────────────────────────────────────────────────
